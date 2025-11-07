@@ -6,7 +6,7 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/app-images/app:$SHORT_SHA'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/app-images/app:$BUILD_ID'
       - '-t'
       - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/app-images/app:latest'
       - '-f'
@@ -18,7 +18,8 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/app-images/app:$SHORT_SHA'
+      - '--all-tags'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/app-images/app'
     id: 'push-image'
 
   # Step 3: 開発環境へデプロイ
@@ -28,7 +29,7 @@ steps:
       - 'run'
       - 'deploy'
       - 'app-dev'
-      - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/app-images/app:$SHORT_SHA'
+      - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/app-images/app:$BUILD_ID'
       - '--region=asia-northeast1'
       - '--platform=managed'
       - '--service-account=cloud-run-dev@$PROJECT_ID.iam.gserviceaccount.com'
