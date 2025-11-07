@@ -1,0 +1,10 @@
+.git
+.gitignore
+terraform/.terraform/
+terraform/terraform.tfstate*
+.idea/
+.vscode/
+.DS_Store
+node_modules/
+docs/
+README.md
