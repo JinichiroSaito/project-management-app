@@ -8,12 +8,13 @@
 .terraformrc
 terraform.rc
 
-# Credentials
-**/*.json
+# Credentials（特定のファイルのみ除外）
 **/credentials/
 **/.gcloud/
 **/.config/gcloud/
 **/service-account-key.json
+**/*-key.json
+**/google-credentials.json
 
 # Environment variables
 .env
