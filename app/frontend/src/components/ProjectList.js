@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { useAuth } from '../AuthContext';
+import { useLanguage } from '../LanguageContext';
 
 const ProjectList = () => {
   const [projects, setProjects] = useState([]);
@@ -13,6 +14,7 @@ const ProjectList = () => {
     status: 'planning'
   });
   const { user } = useAuth();
+  const { t } = useLanguage();
 
   useEffect(() => {
     fetchProjects();
@@ -24,7 +26,7 @@ const ProjectList = () => {
       setProjects(response.data.projects);
       setLoading(false);
     } catch (error) {
-      setError('Failed to fetch projects');
+      setError(t('projects.error.fetch'));
       setLoading(false);
     }
   };
@@ -37,19 +39,19 @@ const ProjectList = () => {
       setShowForm(false);
       fetchProjects();
     } catch (error) {
-      setError('Failed to create project');
+      setError(t('projects.error.create'));
     }
   };
 
   const handleDeleteProject = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this project?')) {
+    if (!window.confirm(t('projects.deleteConfirm'))) {
       return;
     }
     try {
       await api.delete(`/api/projects/${id}`);
       fetchProjects();
     } catch (error) {
-      setError('Failed to delete project');
+      setError(t('projects.error.delete'));
     }
   };
 
@@ -66,7 +68,7 @@ const ProjectList = () => {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="text-gray-600">Loading...</div>
+        <div className="text-gray-600">{t('projects.loading')}</div>
       </div>
     );
   }
@@ -74,13 +76,13 @@ const ProjectList = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="sm:flex sm:items-center sm:justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Projects</h2>
+        <h2 className="text-2xl font-bold text-gray-900">{t('projects.title')}</h2>
         {user && (
           <button
             onClick={() => setShowForm(!showForm)}
             className="mt-4 sm:mt-0 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
           >
-            {showForm ? 'Cancel' : 'New Project'}
+            {showForm ? t('projects.cancel') : t('projects.newProject')}
           </button>
         )}
       </div>
@@ -93,10 +95,10 @@ const ProjectList = () => {
 
       {showForm && (
         <div className="mb-6 bg-white shadow rounded-lg p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Create New Project</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-4">{t('projects.createNew')}</h3>
           <form onSubmit={handleCreateProject} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Name</label>
+              <label className="block text-sm font-medium text-gray-700">{t('projects.name')}</label>
               <input
                 type="text"
                 required
@@ -106,7 +108,7 @@ const ProjectList = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Description</label>
+              <label className="block text-sm font-medium text-gray-700">{t('projects.description')}</label>
               <textarea
                 rows="3"
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
@@ -115,23 +117,23 @@ const ProjectList = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Status</label>
+              <label className="block text-sm font-medium text-gray-700">{t('projects.status')}</label>
               <select
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
                 value={newProject.status}
                 onChange={(e) => setNewProject({ ...newProject, status: e.target.value })}
               >
-                <option value="planning">Planning</option>
-                <option value="active">Active</option>
-                <option value="completed">Completed</option>
-                <option value="on_hold">On Hold</option>
+                <option value="planning">{t('projects.status.planning')}</option>
+                <option value="active">{t('projects.status.active')}</option>
+                <option value="completed">{t('projects.status.completed')}</option>
+                <option value="on_hold">{t('projects.status.on_hold')}</option>
               </select>
             </div>
             <button
               type="submit"
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
             >
-              Create Project
+              {t('projects.create')}
             </button>
           </form>
         </div>
@@ -143,12 +145,12 @@ const ProjectList = () => {
             <div className="flex justify-between items-start mb-2">
               <h3 className="text-lg font-medium text-gray-900">{project.name}</h3>
               <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(project.status)}`}>
-                {project.status}
+                {t(`projects.status.${project.status}`)}
               </span>
             </div>
             <p className="text-sm text-gray-600 mb-4">{project.description}</p>
             <div className="text-xs text-gray-500">
-              Created: {new Date(project.created_at).toLocaleDateString()}
+              {t('projects.created')}: {new Date(project.created_at).toLocaleDateString()}
             </div>
             {user && (
               <div className="mt-4 flex space-x-2">
@@ -156,7 +158,7 @@ const ProjectList = () => {
                   onClick={() => handleDeleteProject(project.id)}
                   className="text-red-600 hover:text-red-700 text-sm font-medium"
                 >
-                  Delete
+                  {t('projects.delete')}
                 </button>
               </div>
             )}
@@ -166,7 +168,7 @@ const ProjectList = () => {
 
       {projects.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-gray-500">No projects yet. Create your first project!</p>
+          <p className="text-gray-500">{t('projects.noProjects')}</p>
         </div>
       )}
     </div>

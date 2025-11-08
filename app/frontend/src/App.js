@@ -1,5 +1,6 @@
 import React from 'react';
 import { AuthProvider, useAuth } from './AuthContext';
+import { LanguageProvider } from './LanguageContext';
 import Login from './components/Login';
 import Header from './components/Header';
 import ProjectList from './components/ProjectList';
@@ -21,9 +22,11 @@ function AppContent() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <LanguageProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </LanguageProvider>
   );
 }
 
