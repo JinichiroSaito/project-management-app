@@ -1,0 +1,63 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'asia-northeast1-docker.pkg.dev/${PROJECT_ID}/app-images/backend:${TAG_NAME}'
+      - '-t'
+      - 'asia-northeast1-docker.pkg.dev/${PROJECT_ID}/app-images/backend:prod-latest'
+      - './app/backend'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'asia-northeast1-docker.pkg.dev/${PROJECT_ID}/app-images/backend:${TAG_NAME}'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'asia-northeast1-docker.pkg.dev/${PROJECT_ID}/app-images/backend:prod-latest'
+
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud run jobs create db-migrate-prod-${SHORT_SHA} \
+          --image=asia-northeast1-docker.pkg.dev/${PROJECT_ID}/app-images/backend:${TAG_NAME} \
+          --region=asia-northeast1 \
+          --vpc-connector=vpc-connector \
+          --service-account=cloud-run-prod@${PROJECT_ID}.iam.gserviceaccount.com \
+          --set-env-vars="DB_HOST=10.81.0.6,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user" \
+          --set-secrets="DB_PASSWORD=db-password-prod:latest" \
+          --command=node \
+          --args=src/migrate.js \
+          --max-retries=3 || true
+        
+        gcloud run jobs execute db-migrate-prod-${SHORT_SHA} \
+          --region=asia-northeast1 \
+          --wait
+        
+        gcloud run jobs delete db-migrate-prod-${SHORT_SHA} \
+          --region=asia-northeast1 \
+          --quiet || true
+
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'app-prod'
+      - '--image=asia-northeast1-docker.pkg.dev/${PROJECT_ID}/app-images/backend:${TAG_NAME}'
+      - '--region=asia-northeast1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--vpc-connector=vpc-connector'
+      - '--service-account=cloud-run-prod@${PROJECT_ID}.iam.gserviceaccount.com'
+      - '--set-env-vars=DB_HOST=10.81.0.6,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user,NODE_ENV=production'
+      - '--set-secrets=DB_PASSWORD=db-password-prod:latest,FIREBASE_SERVICE_ACCOUNT=firebase-service-account-dev:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+timeout: 1200s
