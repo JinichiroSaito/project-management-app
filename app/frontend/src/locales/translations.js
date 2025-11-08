@@ -39,6 +39,35 @@ export const translations = {
     // Language
     'language.english': 'English',
     'language.japanese': '日本語',
+    
+    // Admin
+    'admin.title': 'Admin Dashboard',
+    'admin.subtitle': 'Approve pending user registrations',
+    'admin.showDashboard': 'Show Admin Dashboard',
+    'admin.hideDashboard': 'Hide Admin Dashboard',
+    'admin.email': 'Email',
+    'admin.name': 'Name',
+    'admin.company': 'Company',
+    'admin.department': 'Department',
+    'admin.position': 'Position',
+    'admin.createdAt': 'Created At',
+    'admin.actions': 'Actions',
+    'admin.approve': 'Approve',
+    'admin.noPendingUsers': 'No pending user approvals',
+    
+    // Approval
+    'approval.pending': 'Account Pending Approval',
+    'approval.message': 'Your account is pending approval. Please wait for an administrator to approve your registration.',
+    
+    // Profile
+    'profile.title': 'Complete Your Profile',
+    'profile.description': 'Please provide your information to continue',
+    'profile.name': 'Name',
+    'profile.company': 'Company',
+    'profile.department': 'Department',
+    'profile.position': 'Position',
+    'profile.save': 'Save Profile',
+    'profile.saving': 'Saving...',
   },
   ja: {
     // Login
@@ -80,6 +109,35 @@ export const translations = {
     // Language
     'language.english': 'English',
     'language.japanese': '日本語',
+    
+    // Admin
+    'admin.title': '管理者ダッシュボード',
+    'admin.subtitle': '承認待ちユーザーの登録を承認',
+    'admin.showDashboard': '管理者ダッシュボードを表示',
+    'admin.hideDashboard': '管理者ダッシュボードを非表示',
+    'admin.email': 'メールアドレス',
+    'admin.name': '名前',
+    'admin.company': '会社',
+    'admin.department': '部門',
+    'admin.position': '役職',
+    'admin.createdAt': '作成日',
+    'admin.actions': '操作',
+    'admin.approve': '承認',
+    'admin.noPendingUsers': '承認待ちユーザーはありません',
+    
+    // Approval
+    'approval.pending': 'アカウント承認待ち',
+    'approval.message': 'アカウントが承認待ちです。管理者による承認をお待ちください。',
+    
+    // Profile
+    'profile.title': 'プロフィールを完成させてください',
+    'profile.description': '続行するために情報を入力してください',
+    'profile.name': '名前',
+    'profile.company': '会社',
+    'profile.department': '部門',
+    'profile.position': '役職',
+    'profile.save': 'プロフィールを保存',
+    'profile.saving': '保存中...',
   },
 };
 

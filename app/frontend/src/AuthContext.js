@@ -6,6 +6,7 @@ import {
   createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { auth } from './firebase';
+import api from './api';
 
 const AuthContext = createContext();
 
@@ -19,11 +20,36 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [userInfo, setUserInfo] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // ユーザー情報を取得
+  const fetchUserInfo = async (firebaseUser) => {
+    if (!firebaseUser) {
+      setUserInfo(null);
+      return;
+    }
+
+    try {
+      const token = await firebaseUser.getIdToken();
+      const response = await api.get('/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setUserInfo(response.data.user);
+    } catch (error) {
+      console.error('Error fetching user info:', error);
+      setUserInfo(null);
+    }
+  };
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
+      if (firebaseUser) {
+        await fetchUserInfo(firebaseUser);
+      } else {
+        setUserInfo(null);
+      }
       setLoading(false);
     });
 
@@ -31,23 +57,48 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (email, password) => {
-    return signInWithEmailAndPassword(auth, email, password);
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    await fetchUserInfo(userCredential.user);
+    return userCredential;
   };
 
   const signup = async (email, password) => {
-    return createUserWithEmailAndPassword(auth, email, password);
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    
+    // バックエンドにユーザー登録
+    try {
+      const token = await userCredential.user.getIdToken();
+      await api.post('/api/users/register', {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch (error) {
+      console.error('Error registering user:', error);
+      // 登録失敗でもFirebaseユーザーは作成されているので続行
+    }
+    
+    await fetchUserInfo(userCredential.user);
+    return userCredential;
   };
 
   const logout = async () => {
-    return signOut(auth);
+    await signOut(auth);
+    setUserInfo(null);
+  };
+
+  const refreshUserInfo = async () => {
+    if (user) {
+      await fetchUserInfo(user);
+    }
   };
 
   const value = {
     user,
+    userInfo,
     loading,
     login,
     signup,
     logout,
+    refreshUserInfo,
   };
 
   return (
