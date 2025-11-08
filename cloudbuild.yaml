@@ -58,7 +58,7 @@ steps:
       - '--vpc-connector=vpc-connector'
       - '--service-account=cloud-run-dev@${PROJECT_ID}.iam.gserviceaccount.com'
       - '--set-env-vars=DB_HOST=10.81.0.3,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user,NODE_ENV=development'
-      - '--set-secrets=DB_PASSWORD=db-password-dev:latest'
+      - '--set-secrets=DB_PASSWORD=db-password-dev:latest,FIREBASE_SERVICE_ACCOUNT=firebase-service-account-dev:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY

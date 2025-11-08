@@ -1,0 +1,101 @@
+const admin = require('firebase-admin');
+
+// Firebase Admin SDK初期化
+let firebaseApp;
+
+function initializeFirebase() {
+  if (!firebaseApp) {
+    try {
+      // Secret Managerから取得した認証情報（環境変数として渡される）
+      if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        firebaseApp = admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount)
+        });
+        console.log('✓ Firebase Admin SDK initialized');
+      } else {
+        console.warn('⚠ FIREBASE_SERVICE_ACCOUNT not set - authentication disabled');
+      }
+    } catch (error) {
+      console.error('Failed to initialize Firebase Admin SDK:', error);
+    }
+  }
+  return firebaseApp;
+}
+
+// 認証ミドルウェア
+async function authenticateToken(req, res, next) {
+  try {
+    // Firebase初期化
+    const app = initializeFirebase();
+    
+    if (!app) {
+      // Firebase未設定の場合はスキップ（開発用）
+      return next();
+    }
+
+    // Authorizationヘッダーからトークンを取得
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+
+    const token = authHeader.split('Bearer ')[1];
+
+    // トークンを検証
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    
+    // ユーザー情報をリクエストに追加
+    req.user = {
+      uid: decodedToken.uid,
+      email: decodedToken.email,
+      emailVerified: decodedToken.email_verified
+    };
+
+    next();
+  } catch (error) {
+    console.error('Authentication error:', error);
+    
+    if (error.code === 'auth/id-token-expired') {
+      return res.status(401).json({ error: 'Token expired' });
+    }
+    
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+// オプショナル認証（トークンがあれば検証、なければスキップ）
+async function optionalAuth(req, res, next) {
+  try {
+    const app = initializeFirebase();
+    
+    if (!app) {
+      return next();
+    }
+
+    const authHeader = req.headers.authorization;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split('Bearer ')[1];
+      const decodedToken = await admin.auth().verifyIdToken(token);
+      
+      req.user = {
+        uid: decodedToken.uid,
+        email: decodedToken.email,
+        emailVerified: decodedToken.email_verified
+      };
+    }
+
+    next();
+  } catch (error) {
+    // トークンが無効でもエラーにしない
+    next();
+  }
+}
+
+module.exports = {
+  authenticateToken,
+  optionalAuth,
+  initializeFirebase
+};

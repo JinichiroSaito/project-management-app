@@ -1,8 +1,12 @@
 const express = require('express');
 const db = require('./db');
+const { authenticateToken, optionalAuth, initializeFirebase } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+
+// Firebase初期化
+initializeFirebase();
 
 // Middleware
 app.use(express.json());
@@ -34,21 +38,24 @@ app.get('/health/db', async (req, res) => {
   }
 });
 
-// Get all projects
-app.get('/api/projects', async (req, res) => {
+// Public endpoint - Get all projects (誰でもアクセス可能)
+app.get('/api/projects', optionalAuth, async (req, res) => {
   try {
     const result = await db.query(
       'SELECT * FROM projects ORDER BY created_at DESC'
     );
-    res.json({ projects: result.rows });
+    res.json({ 
+      projects: result.rows,
+      user: req.user || null // 認証されている場合はユーザー情報を返す
+    });
   } catch (error) {
     console.error('Error fetching projects:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// Get project by ID
-app.get('/api/projects/:id', async (req, res) => {
+// Public endpoint - Get project by ID
+app.get('/api/projects/:id', optionalAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await db.query(
@@ -67,8 +74,8 @@ app.get('/api/projects/:id', async (req, res) => {
   }
 });
 
-// Create new project
-app.post('/api/projects', async (req, res) => {
+// Protected endpoint - Create new project (認証必須)
+app.post('/api/projects', authenticateToken, async (req, res) => {
   try {
     const { name, description, status } = req.body;
     
@@ -81,15 +88,18 @@ app.post('/api/projects', async (req, res) => {
       [name, description || '', status || 'planning']
     );
     
-    res.status(201).json(result.rows[0]);
+    res.status(201).json({
+      ...result.rows[0],
+      created_by: req.user.email
+    });
   } catch (error) {
     console.error('Error creating project:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// Update project
-app.put('/api/projects/:id', async (req, res) => {
+// Protected endpoint - Update project (認証必須)
+app.put('/api/projects/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { name, description, status } = req.body;
@@ -103,15 +113,18 @@ app.put('/api/projects/:id', async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
     
-    res.json(result.rows[0]);
+    res.json({
+      ...result.rows[0],
+      updated_by: req.user.email
+    });
   } catch (error) {
     console.error('Error updating project:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// Delete project
-app.delete('/api/projects/:id', async (req, res) => {
+// Protected endpoint - Delete project (認証必須)
+app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await db.query(
@@ -123,11 +136,21 @@ app.delete('/api/projects/:id', async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
     
-    res.json({ message: 'Project deleted successfully' });
+    res.json({ 
+      message: 'Project deleted successfully',
+      deleted_by: req.user.email
+    });
   } catch (error) {
     console.error('Error deleting project:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// Auth endpoint - Get current user info
+app.get('/api/auth/me', authenticateToken, (req, res) => {
+  res.json({
+    user: req.user
+  });
 });
 
 // Start server
