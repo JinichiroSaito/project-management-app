@@ -37,6 +37,19 @@ jobs:
         run: |
           gcloud auth configure-docker asia-northeast1-docker.pkg.dev --quiet
 
+      - name: Create Artifact Registry repository if not exists
+        run: |
+          if ! gcloud artifacts repositories describe app-images --location=asia-northeast1 --project=${{ env.PROJECT_ID }} 2>/dev/null; then
+            echo "Creating Artifact Registry repository..."
+            gcloud artifacts repositories create app-images \
+              --repository-format=docker \
+              --location=asia-northeast1 \
+              --description="Docker repository for application images" \
+              --project=${{ env.PROJECT_ID }}
+          else
+            echo "Artifact Registry repository already exists"
+          fi
+
       - name: Build Docker image
         working-directory: ./app/frontend
         run: |
