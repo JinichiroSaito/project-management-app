@@ -4,11 +4,27 @@ const nodemailer = require('nodemailer');
 const createTransporter = () => {
   // Gmailを使用する場合
   if (process.env.EMAIL_SERVICE === 'gmail') {
+    const emailUser = process.env.EMAIL_USER;
+    const emailPassword = process.env.EMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD;
+    
+    if (!emailUser || !emailPassword) {
+      console.warn('EMAIL_USER or EMAIL_APP_PASSWORD not set. Email sending will be disabled.');
+      return {
+        sendMail: async (options) => {
+          console.log('📧 Email (disabled - credentials not set):', {
+            to: options.to,
+            subject: options.subject
+          });
+          return { messageId: 'disabled' };
+        }
+      };
+    }
+    
     return nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD || process.env.EMAIL_APP_PASSWORD
+        user: emailUser,
+        pass: emailPassword
       }
     });
   }
