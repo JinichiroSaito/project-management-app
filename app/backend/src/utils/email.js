@@ -65,7 +65,7 @@ async function sendApprovalRequestEmail(userEmail, userName) {
   const mailOptions = {
     from: process.env.EMAIL_FROM || process.env.EMAIL_USER || 'noreply@project-management.app',
     to: adminEmail,
-    subject: '【承認依頼】新しいユーザーのサインアップ',
+    subject: '【通知】新しいユーザーのサインアップ',
     html: `
       <h2>新しいユーザーのサインアップがありました</h2>
       <p>以下のユーザーがサインアップし、承認を待っています。</p>
@@ -73,9 +73,9 @@ async function sendApprovalRequestEmail(userEmail, userName) {
         <li><strong>メールアドレス:</strong> ${userEmail}</li>
         <li><strong>名前:</strong> ${userName || '未設定'}</li>
       </ul>
-      <p>以下のリンクから承認してください:</p>
+      <p>以下のリンクから管理者ダッシュボードにアクセスし、承認待ちユーザーを承認してください:</p>
       <p><a href="${appUrl}">${appUrl}</a></p>
-      <p>管理者ダッシュボードから承認待ちユーザーを確認し、承認してください。</p>
+      <p>※ 承認は管理者ダッシュボードから行ってください。</p>
     `,
     text: `
 新しいユーザーのサインアップがありました
@@ -83,10 +83,10 @@ async function sendApprovalRequestEmail(userEmail, userName) {
 メールアドレス: ${userEmail}
 名前: ${userName || '未設定'}
 
-以下のリンクから承認してください:
+以下のリンクから管理者ダッシュボードにアクセスし、承認待ちユーザーを承認してください:
 ${appUrl}
 
-管理者ダッシュボードから承認待ちユーザーを確認し、承認してください。
+※ 承認は管理者ダッシュボードから行ってください。
     `
   };
   

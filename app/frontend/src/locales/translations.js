@@ -42,7 +42,7 @@ export const translations = {
     
     // Admin
     'admin.title': 'Admin Dashboard',
-    'admin.subtitle': 'Approve pending user registrations',
+    'admin.subtitle': 'Approve pending user registrations from the list below',
     'admin.showDashboard': 'Show Admin Dashboard',
     'admin.hideDashboard': 'Hide Admin Dashboard',
     'admin.email': 'Email',
@@ -56,6 +56,7 @@ export const translations = {
     'admin.noPendingUsers': 'No pending user approvals',
     'admin.resendEmails': 'Resend Approval Request Emails',
     'admin.sending': 'Sending...',
+    'admin.approvedSuccess': 'User approved successfully',
     
     // Approval
     'approval.pending': 'Account Pending Approval',
@@ -114,7 +115,7 @@ export const translations = {
     
     // Admin
     'admin.title': '管理者ダッシュボード',
-    'admin.subtitle': '承認待ちユーザーの登録を承認',
+    'admin.subtitle': '以下のリストから承認待ちユーザーの登録を承認してください',
     'admin.showDashboard': '管理者ダッシュボードを表示',
     'admin.hideDashboard': '管理者ダッシュボードを非表示',
     'admin.email': 'メールアドレス',
@@ -128,6 +129,7 @@ export const translations = {
     'admin.noPendingUsers': '承認待ちユーザーはありません',
     'admin.resendEmails': '承認依頼メールを再送信',
     'admin.sending': '送信中...',
+    'admin.approvedSuccess': 'ユーザーを承認しました',
     
     // Approval
     'approval.pending': 'アカウント承認待ち',

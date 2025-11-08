@@ -220,7 +220,7 @@ app.post('/api/users/register', authenticateToken, async (req, res) => {
     
     const newUser = result.rows[0];
     
-    // 管理者に承認依頼メールを送信
+    // 管理者に承認依頼メールを送信（通知のみ、承認は管理者ページで行う）
     try {
       await sendApprovalRequestEmail(email, null);
     } catch (emailError) {
