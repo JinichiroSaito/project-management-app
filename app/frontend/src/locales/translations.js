@@ -54,6 +54,8 @@ export const translations = {
     'admin.actions': 'Actions',
     'admin.approve': 'Approve',
     'admin.noPendingUsers': 'No pending user approvals',
+    'admin.resendEmails': 'Resend Approval Request Emails',
+    'admin.sending': 'Sending...',
     
     // Approval
     'approval.pending': 'Account Pending Approval',
@@ -124,6 +126,8 @@ export const translations = {
     'admin.actions': '操作',
     'admin.approve': '承認',
     'admin.noPendingUsers': '承認待ちユーザーはありません',
+    'admin.resendEmails': '承認依頼メールを再送信',
+    'admin.sending': '送信中...',
     
     // Approval
     'approval.pending': 'アカウント承認待ち',

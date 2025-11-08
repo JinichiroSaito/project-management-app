@@ -252,6 +252,43 @@ app.get('/api/admin/users/pending', authenticateToken, requireAdmin, async (req,
   }
 });
 
+// Admin: Resend approval request emails for all pending users
+app.post('/api/admin/users/resend-approval-requests', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await db.query(
+      'SELECT id, email, name FROM users WHERE is_approved = FALSE ORDER BY created_at DESC'
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({
+        message: 'No pending users found',
+        sent: 0
+      });
+    }
+    
+    const results = [];
+    for (const user of result.rows) {
+      try {
+        await sendApprovalRequestEmail(user.email, user.name);
+        results.push({ email: user.email, status: 'sent' });
+      } catch (error) {
+        console.error(`Failed to send email to ${user.email}:`, error);
+        results.push({ email: user.email, status: 'failed', error: error.message });
+      }
+    }
+    
+    res.json({
+      message: `Approval request emails sent for ${result.rows.length} user(s)`,
+      results: results,
+      sent: results.filter(r => r.status === 'sent').length,
+      failed: results.filter(r => r.status === 'failed').length
+    });
+  } catch (error) {
+    console.error('Error resending approval requests:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Admin: Approve user
 app.post('/api/admin/users/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
   try {

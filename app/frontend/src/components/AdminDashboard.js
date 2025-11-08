@@ -6,6 +6,7 @@ const AdminDashboard = () => {
   const [pendingUsers, setPendingUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [sendingEmails, setSendingEmails] = useState(false);
   const { t } = useLanguage();
 
   useEffect(() => {
@@ -31,9 +32,24 @@ const AdminDashboard = () => {
       await api.post(`/api/admin/users/${userId}/approve`);
       setPendingUsers(pendingUsers.filter(user => user.id !== userId));
       setError('');
+      fetchPendingUsers(); // リストを更新
     } catch (error) {
       console.error('Error approving user:', error);
       setError(error.response?.data?.error || 'Failed to approve user');
+    }
+  };
+
+  const handleResendApprovalRequests = async () => {
+    try {
+      setSendingEmails(true);
+      setError('');
+      const response = await api.post('/api/admin/users/resend-approval-requests');
+      alert(`${response.data.sent}件の承認依頼メールを送信しました。`);
+    } catch (error) {
+      console.error('Error resending approval requests:', error);
+      setError(error.response?.data?.error || 'Failed to resend approval request emails');
+    } finally {
+      setSendingEmails(false);
     }
   };
 
@@ -47,13 +63,26 @@ const AdminDashboard = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">
-          {t('admin.title', 'Admin Dashboard')}
-        </h2>
-        <p className="mt-2 text-sm text-gray-600">
-          {t('admin.subtitle', 'Approve pending user registrations')}
-        </p>
+      <div className="mb-6 flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">
+            {t('admin.title', 'Admin Dashboard')}
+          </h2>
+          <p className="mt-2 text-sm text-gray-600">
+            {t('admin.subtitle', 'Approve pending user registrations')}
+          </p>
+        </div>
+        {pendingUsers.length > 0 && (
+          <button
+            onClick={handleResendApprovalRequests}
+            disabled={sendingEmails}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {sendingEmails 
+              ? t('admin.sending', 'Sending...') 
+              : t('admin.resendEmails', 'Resend Approval Request Emails')}
+          </button>
+        )}
       </div>
 
       {error && (
