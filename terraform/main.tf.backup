@@ -6,10 +6,6 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 5.0"
     }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.5"
-    }
   }
   
   backend "gcs" {
@@ -17,6 +13,7 @@ terraform {
     prefix = "terraform/state"
   }
 }
+
 provider "google" {
   project = var.project_id
   region  = var.region
@@ -131,6 +128,20 @@ output "artifact_registry_url" {
 output "cloud_build_sa_email" {
   value       = module.service_accounts.cloud_build_sa_email
   description = "Cloud Build Service Account"
+}
+
+# Random providerを追加（パスワード生成用）
+terraform {
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.5"
+    }
+  }
 }
 
 # データベースモジュール（開発環境）

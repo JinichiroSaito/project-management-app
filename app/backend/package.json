@@ -1,15 +1,17 @@
 {
-  "name": "project-management-api",
+  "name": "project-management-backend",
   "version": "1.0.0",
-  "description": "Project Management API",
+  "description": "Project Management Application Backend",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "migrate": "node src/migrate.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "cors": "^2.8.5"
+    "pg": "^8.11.3",
+    "dotenv": "^16.3.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
