@@ -122,6 +122,10 @@ gcloud projects add-iam-policy-binding saito-test-gcp \
 
 gcloud projects add-iam-policy-binding saito-test-gcp \
   --member="serviceAccount:github-actions@saito-test-gcp.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.admin"
+
+gcloud projects add-iam-policy-binding saito-test-gcp \
+  --member="serviceAccount:github-actions@saito-test-gcp.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser"
 
 # サービスアカウントキーを生成
