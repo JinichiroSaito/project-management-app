@@ -11,6 +11,20 @@ initializeFirebase();
 // Middleware
 app.use(express.json());
 
+// CORS設定
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  // Preflight request
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  
+  next();
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({
@@ -38,7 +52,7 @@ app.get('/health/db', async (req, res) => {
   }
 });
 
-// Public endpoint - Get all projects (誰でもアクセス可能)
+// Public endpoint - Get all projects
 app.get('/api/projects', optionalAuth, async (req, res) => {
   try {
     const result = await db.query(
@@ -46,7 +60,7 @@ app.get('/api/projects', optionalAuth, async (req, res) => {
     );
     res.json({ 
       projects: result.rows,
-      user: req.user || null // 認証されている場合はユーザー情報を返す
+      user: req.user || null
     });
   } catch (error) {
     console.error('Error fetching projects:', error);
@@ -74,7 +88,7 @@ app.get('/api/projects/:id', optionalAuth, async (req, res) => {
   }
 });
 
-// Protected endpoint - Create new project (認証必須)
+// Protected endpoint - Create new project
 app.post('/api/projects', authenticateToken, async (req, res) => {
   try {
     const { name, description, status } = req.body;
@@ -98,7 +112,7 @@ app.post('/api/projects', authenticateToken, async (req, res) => {
   }
 });
 
-// Protected endpoint - Update project (認証必須)
+// Protected endpoint - Update project
 app.put('/api/projects/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -123,7 +137,7 @@ app.put('/api/projects/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Protected endpoint - Delete project (認証必須)
+// Protected endpoint - Delete project
 app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
