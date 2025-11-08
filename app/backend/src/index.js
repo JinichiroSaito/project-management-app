@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('./db');
-const { authenticateToken, optionalAuth, initializeFirebase } = require('./middleware/auth');
+const { authenticateToken, optionalAuth, requireAdmin, requireApproved, initializeFirebase } = require('./middleware/auth');
+const { sendApprovalRequestEmail, sendApprovalNotificationEmail } = require('./utils/email');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -89,7 +90,7 @@ app.get('/api/projects/:id', optionalAuth, async (req, res) => {
 });
 
 // Protected endpoint - Create new project
-app.post('/api/projects', authenticateToken, async (req, res) => {
+app.post('/api/projects', authenticateToken, requireApproved, async (req, res) => {
   try {
     const { name, description, status } = req.body;
     
@@ -161,10 +162,157 @@ app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
 });
 
 // Auth endpoint - Get current user info
-app.get('/api/auth/me', authenticateToken, (req, res) => {
-  res.json({
-    user: req.user
-  });
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    const result = await db.query(
+      'SELECT id, email, is_admin, is_approved, company, department, position, name, created_at FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({
+        user: {
+          ...req.user,
+          is_admin: false,
+          is_approved: false,
+          needsProfile: true
+        }
+      });
+    }
+    
+    const user = result.rows[0];
+    res.json({
+      user: {
+        ...req.user,
+        ...user,
+        needsProfile: !user.name || !user.company || !user.department || !user.position
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching user info:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// User registration endpoint (called after Firebase signup)
+app.post('/api/users/register', authenticateToken, async (req, res) => {
+  try {
+    const { email, uid } = req.user;
+    
+    // 既存ユーザーをチェック
+    const existingUser = await db.query(
+      'SELECT * FROM users WHERE email = $1 OR firebase_uid = $2',
+      [email, uid]
+    );
+    
+    if (existingUser.rows.length > 0) {
+      return res.json({
+        user: existingUser.rows[0],
+        message: 'User already exists'
+      });
+    }
+    
+    // 新規ユーザーを作成（承認待ち状態）
+    const result = await db.query(
+      'INSERT INTO users (firebase_uid, email, is_admin, is_approved) VALUES ($1, $2, $3, $4) RETURNING *',
+      [uid, email, false, false]
+    );
+    
+    const newUser = result.rows[0];
+    
+    // 管理者に承認依頼メールを送信
+    try {
+      await sendApprovalRequestEmail(email, null);
+    } catch (emailError) {
+      console.error('Failed to send approval request email:', emailError);
+      // メール送信失敗でもユーザー登録は成功とする
+    }
+    
+    res.status(201).json({
+      user: newUser,
+      message: 'User registered. Waiting for admin approval.'
+    });
+  } catch (error) {
+    console.error('Error registering user:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Admin: Get pending approval users
+app.get('/api/admin/users/pending', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await db.query(
+      'SELECT id, email, name, company, department, position, created_at FROM users WHERE is_approved = FALSE ORDER BY created_at DESC'
+    );
+    
+    res.json({ users: result.rows });
+  } catch (error) {
+    console.error('Error fetching pending users:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Admin: Approve user
+app.post('/api/admin/users/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await db.query(
+      'UPDATE users SET is_approved = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const user = result.rows[0];
+    
+    // ユーザーに承認通知メールを送信
+    try {
+      await sendApprovalNotificationEmail(user.email);
+    } catch (emailError) {
+      console.error('Failed to send approval notification email:', emailError);
+    }
+    
+    res.json({
+      user: user,
+      message: 'User approved successfully'
+    });
+  } catch (error) {
+    console.error('Error approving user:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update user profile
+app.put('/api/users/profile', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { name, company, department, position } = req.body;
+    
+    if (!name || !company || !department || !position) {
+      return res.status(400).json({ 
+        error: 'Name, company, department, and position are required' 
+      });
+    }
+    
+    const result = await db.query(
+      'UPDATE users SET name = $1, company = $2, department = $3, position = $4, updated_at = CURRENT_TIMESTAMP WHERE email = $5 RETURNING *',
+      [name, company, department, position, req.user.email]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({
+      user: result.rows[0],
+      message: 'Profile updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Start server

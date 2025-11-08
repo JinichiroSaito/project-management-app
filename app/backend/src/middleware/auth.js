@@ -94,8 +94,64 @@ async function optionalAuth(req, res, next) {
   }
 }
 
+// 管理者チェックミドルウェア
+async function requireAdmin(req, res, next) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    
+    const db = require('../db');
+    const result = await db.query(
+      'SELECT is_admin FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (result.rows.length === 0 || !result.rows[0].is_admin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    
+    next();
+  } catch (error) {
+    console.error('Admin check error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// 承認済みユーザーチェックミドルウェア
+async function requireApproved(req, res, next) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    
+    const db = require('../db');
+    const result = await db.query(
+      'SELECT is_approved FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(403).json({ error: 'User not found. Please sign up first.' });
+    }
+    
+    if (!result.rows[0].is_approved) {
+      return res.status(403).json({ 
+        error: 'Your account is pending approval. Please wait for admin approval.' 
+      });
+    }
+    
+    next();
+  } catch (error) {
+    console.error('Approval check error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 module.exports = {
   authenticateToken,
   optionalAuth,
+  requireAdmin,
+  requireApproved,
   initializeFirebase
 };

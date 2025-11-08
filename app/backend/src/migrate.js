@@ -6,13 +6,23 @@ async function runMigrations() {
   try {
     console.log('Running database migrations...');
     
-    const migrationFile = fs.readFileSync(
-      path.join(__dirname, 'migrations', '001_initial_schema.sql'),
-      'utf8'
-    );
+    const migrationsDir = path.join(__dirname, 'migrations');
+    const files = fs.readdirSync(migrationsDir)
+      .filter(file => file.endsWith('.sql'))
+      .sort();
     
-    await db.query(migrationFile);
-    console.log('✓ Migrations completed successfully');
+    for (const file of files) {
+      console.log(`Running migration: ${file}`);
+      const migrationFile = fs.readFileSync(
+        path.join(migrationsDir, file),
+        'utf8'
+      );
+      
+      await db.query(migrationFile);
+      console.log(`✓ ${file} completed`);
+    }
+    
+    console.log('✓ All migrations completed successfully');
     
     process.exit(0);
   } catch (error) {
