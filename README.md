@@ -100,6 +100,58 @@ gcloud services list --enabled
 gcloud compute networks list
 ```
 
+## 🔄 CI/CD (GitHub Actions)
+
+### セットアップ
+
+1. **GCPサービスアカウントキーの作成**
+```bash
+# サービスアカウントを作成（既存の場合はスキップ）
+gcloud iam service-accounts create github-actions \
+  --display-name="GitHub Actions Service Account" \
+  --project=saito-test-gcp
+
+# 必要な権限を付与
+gcloud projects add-iam-policy-binding saito-test-gcp \
+  --member="serviceAccount:github-actions@saito-test-gcp.iam.gserviceaccount.com" \
+  --role="roles/run.admin"
+
+gcloud projects add-iam-policy-binding saito-test-gcp \
+  --member="serviceAccount:github-actions@saito-test-gcp.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.writer"
+
+gcloud projects add-iam-policy-binding saito-test-gcp \
+  --member="serviceAccount:github-actions@saito-test-gcp.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
+
+# サービスアカウントキーを生成
+gcloud iam service-accounts keys create github-actions-key.json \
+  --iam-account=github-actions@saito-test-gcp.iam.gserviceaccount.com \
+  --project=saito-test-gcp
+```
+
+2. **GitHub Secretsの設定**
+
+GitHubリポジトリの Settings > Secrets and variables > Actions に以下を追加：
+
+- `GCP_SA_KEY`: サービスアカウントキー（github-actions-key.json）の内容をコピー&ペースト
+
+3. **自動デプロイ**
+
+`main`ブランチに`app/frontend/`配下の変更をプッシュすると、自動的にCloud Runにデプロイされます。
+
+```bash
+git add .
+git commit -m "Update frontend"
+git push origin main
+```
+
+### ワークフロー
+
+- **トリガー**: `main`ブランチへのプッシュ（`app/frontend/`配下の変更時）
+- **手動実行**: GitHub ActionsのUIから`workflow_dispatch`で手動実行可能
+- **デプロイ先**: Cloud Run (frontend-dev)
+
 ## 📝 ドキュメント
 
 - [アーキテクチャ設計](docs/architecture.md) - 詳細設計書
