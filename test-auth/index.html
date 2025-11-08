@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Firebase Auth Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+    input, textarea, button {
+      margin: 10px 0;
+      padding: 10px;
+      font-size: 14px;
+    }
+    input {
+      width: 300px;
+    }
+    button {
+      background: #4285f4;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    button:hover {
+      background: #357ae8;
+    }
+    textarea {
+      width: 100%;
+      height: 100px;
+      font-family: monospace;
+    }
+    pre {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+  </style>
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getAuth, signInWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+    // Firebase設定
+    const firebaseConfig = {
+      apiKey: "AIzaSyDVqlrEpda2Tqa8VHfDD56hMFkcbfRkejM",
+      authDomain: "project-management-app-1517f.firebaseapp.com",
+      projectId: "project-management-app-1517f",
+      storageBucket: "project-management-app-1517f.firebasestorage.app",
+      messagingSenderId: "498773285957",
+      appId: "1:498773285957:web:a682697f4719280926172c"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    window.testLogin = async function() {
+      try {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        
+        document.getElementById('result').innerHTML = '<p>Logging in...</p>';
+        
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const token = await userCredential.user.getIdToken();
+        
+        document.getElementById('token').value = token;
+        document.getElementById('result').innerHTML = '<p style="color:green">✅ Login successful!</p>';
+        document.getElementById('userInfo').innerHTML = `<p>User: ${userCredential.user.email}</p>`;
+        
+        console.log('Token:', token);
+      } catch (error) {
+        document.getElementById('result').innerHTML = '<p style="color:red">❌ Error: ' + error.message + '</p>';
+        console.error(error);
+      }
+    };
+
+    window.testAPI = async function() {
+      try {
+        const token = document.getElementById('token').value;
+        
+        if (!token) {
+          alert('Please login first!');
+          return;
+        }
+        
+        const apiUrl = 'https://app-dev-lerydx77wa-an.a.run.app/api/projects';
+        
+        document.getElementById('apiResult').innerHTML = '<p>Creating project...</p>';
+        
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify({
+            name: 'Authenticated Project - ' + new Date().toLocaleTimeString(),
+            description: 'Created with Firebase authentication',
+            status: 'active'
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          document.getElementById('apiResult').innerHTML = '<p style="color:green">✅ Project created successfully!</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+        } else {
+          document.getElementById('apiResult').innerHTML = '<p style="color:red">❌ API Error</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+        }
+      } catch (error) {
+        document.getElementById('apiResult').innerHTML = '<p style="color:red">❌ Error: ' + error.message + '</p>';
+        console.error(error);
+      }
+    };
+
+    window.testGetMe = async function() {
+      try {
+        const token = document.getElementById('token').value;
+        
+        if (!token) {
+          alert('Please login first!');
+          return;
+        }
+        
+        const response = await fetch('https://app-dev-lerydx77wa-an.a.run.app/api/auth/me', {
+          headers: {
+            'Authorization': 'Bearer ' + token
+          }
+        });
+        
+        const data = await response.json();
+        document.getElementById('meResult').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+      } catch (error) {
+        document.getElementById('meResult').innerHTML = '<p style="color:red">Error: ' + error.message + '</p>';
+      }
+    };
+  </script>
+</head>
+<body>
+  <h1>🔐 Firebase Authentication Test</h1>
+  
+  <h2>Step 1: Login</h2>
+  <div>
+    <input type="email" id="email" placeholder="Email" value="test@example.com" /><br>
+    <input type="password" id="password" placeholder="Password" value="Test123456" /><br>
+    <button onclick="testLogin()">Login</button>
+  </div>
+  <div id="result"></div>
+  <div id="userInfo"></div>
+  
+  <h2>Step 2: Token (Auto-filled after login)</h2>
+  <textarea id="token" placeholder="Token will appear here after login" readonly></textarea>
+  
+  <h2>Step 3: Test Authenticated Endpoints</h2>
+  
+  <h3>Get Current User Info</h3>
+  <button onclick="testGetMe()">GET /api/auth/me</button>
+  <div id="meResult"></div>
+  
+  <h3>Create Project</h3>
+  <button onclick="testAPI()">POST /api/projects (Create Project)</button>
+  <div id="apiResult"></div>
+</body>
+</html>

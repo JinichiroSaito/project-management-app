@@ -25,27 +25,20 @@ resource "google_compute_global_address" "private_ip_address" {
   network       = var.vpc_network
 }
 
-# VPCピアリング接続
-resource "google_service_networking_connection" "private_vpc_connection" {
-  network                 = var.vpc_network
-  service                 = "servicenetworking.googleapis.com"
-  reserved_peering_ranges = [google_compute_global_address.private_ip_address.name]
-}
-
-# Cloud SQL インスタンス
+# Cloud SQL インスタンス（VPCピアリングは既存のものを使用）
 resource "google_sql_database_instance" "main" {
   name             = "pm-app-db-${var.environment}"
   project          = var.project_id
   region           = var.region
   database_version = "POSTGRES_15"
   
-  deletion_protection = false # 開発環境用（本番はtrue）
+  deletion_protection = false
   
   settings {
-    tier              = "db-f1-micro" # 開発環境用（本番はdb-n1-standard-1以上）
-    availability_type = "ZONAL"
+    tier              = var.environment == "prod" ? "db-custom-2-7680" : "db-f1-micro"
+    availability_type = var.environment == "prod" ? "REGIONAL" : "ZONAL"
     disk_type         = "PD_SSD"
-    disk_size         = 10
+    disk_size         = var.environment == "prod" ? 20 : 10
     
     backup_configuration {
       enabled                        = true
@@ -57,16 +50,14 @@ resource "google_sql_database_instance" "main" {
     ip_configuration {
       ipv4_enabled    = false
       private_network = var.vpc_network
-      require_ssl     = false # 開発環境用（本番はtrue推奨）
+      require_ssl     = false
     }
     
     database_flags {
       name  = "max_connections"
-      value = "100"
+      value = var.environment == "prod" ? "200" : "100"
     }
   }
-  
-  depends_on = [google_service_networking_connection.private_vpc_connection]
 }
 
 # データベース作成
@@ -109,7 +100,7 @@ resource "google_secret_manager_secret_version" "db_password" {
 resource "google_secret_manager_secret_iam_member" "secret_access" {
   secret_id = google_secret_manager_secret.db_password.id
   role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:cloud-run-dev@${var.project_id}.iam.gserviceaccount.com"
+  member    = "serviceAccount:cloud-run-${var.environment}@${var.project_id}.iam.gserviceaccount.com"
 }
 
 # 出力
