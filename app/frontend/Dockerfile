@@ -1,26 +1,20 @@
 # Build stage
 FROM node:18-alpine AS builder
 
-ARG REACT_APP_ENV=production
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 # Copy source files
 COPY . .
 
-# Copy appropriate env file
-RUN if [ "$REACT_APP_ENV" = "development" ]; then \
-      cp .env.development .env.production.local; \
-    elif [ "$REACT_APP_ENV" = "staging" ]; then \
-      cp .env.staging .env.production.local; \
-    else \
-      cp .env.production .env.production.local; \
-    fi
+# Set API URL based on build argument
+ARG REACT_APP_API_URL=https://app-dev-823277232006.asia-northeast1.run.app
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
 
 # Build the app
 RUN npm run build
