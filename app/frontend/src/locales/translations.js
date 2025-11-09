@@ -358,6 +358,12 @@ export const translations = {
     'kpi.error.delete': 'KPI報告の削除に失敗しました',
     'kpi.deleteConfirm': 'このKPI報告を削除してもよろしいですか？',
     'kpi.requiredAtApplication': '申請時にこの情報の記載が必要です',
+    'kpi.plannedBudgetOptional': '1億円未満の案件では任意です',
+    'kpi.addSemiAnnual': '半年毎報告を追加',
+    'kpi.showReports': 'KPI報告を管理',
+    'kpi.hideReports': 'KPI報告を非表示',
+    'kpi.semiAnnualInfo': '5億円以上の承認済みプロジェクトでは、半年毎の報告を作成できます',
+    'kpi.period': '期間',
     
     // Projects
     'projects.myProjects': 'マイプロジェクト',

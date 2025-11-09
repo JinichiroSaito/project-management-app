@@ -22,7 +22,11 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
 
   useEffect(() => {
     fetchReviewers();
-  }, []);
+    if (project?.id) {
+      fetchKpiReports();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.id]);
 
   const fetchReviewers = async () => {
     try {
@@ -138,11 +142,14 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
     if (!amountCategory) return [];
     switch (amountCategory) {
       case 'under_100m':
+        // 1億円以下：申請時に社外MVPのKPIのみ
         return ['external_mvp'];
       case '100m_to_500m':
+        // 1億円以上5億円未満：申請時に社内MVPと社外MVPのKPI
         return ['internal_mvp', 'external_mvp'];
       case 'over_500m':
-        return ['internal_mvp', 'external_mvp', 'semi_annual'];
+        // 5億円以上：申請時に社内MVPと社外MVPのKPI（半年毎報告は承認後に作成）
+        return ['internal_mvp', 'external_mvp'];
       default:
         return [];
     }

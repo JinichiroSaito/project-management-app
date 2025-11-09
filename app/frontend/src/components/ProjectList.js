@@ -3,6 +3,7 @@ import api from '../api';
 import { useAuth } from '../AuthContext';
 import { useLanguage } from '../LanguageContext';
 import ProjectApplicationForm from './ProjectApplicationForm';
+import ProjectKpiReports from './ProjectKpiReports';
 
 const ProjectList = () => {
   const [projects, setProjects] = useState([]);
