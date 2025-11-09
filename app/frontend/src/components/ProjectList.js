@@ -101,13 +101,18 @@ const ProjectList = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="sm:flex sm:items-center sm:justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">{t('projects.title')}</h2>
-        {user && (
+        <h2 className="text-2xl font-bold text-gray-900">
+          {isExecutor ? t('projects.myProjects', 'My Projects') : t('projects.title', 'Projects')}
+        </h2>
+        {isExecutor && (
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              setShowForm(!showForm);
+              setEditingProject(null);
+            }}
             className="mt-4 sm:mt-0 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
           >
-            {showForm ? t('projects.cancel') : t('projects.newProject')}
+            {showForm ? t('projects.cancel') : t('projects.newProject', 'New Project Application')}
           </button>
         )}
       </div>
