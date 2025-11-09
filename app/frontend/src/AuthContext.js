@@ -68,12 +68,16 @@ export const AuthProvider = ({ children }) => {
     // バックエンドにユーザー登録
     try {
       const token = await userCredential.user.getIdToken();
-      await api.post('/api/users/register', {}, {
+      const response = await api.post('/api/users/register', {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      console.log('[Signup] Backend registration successful:', response.data);
     } catch (error) {
-      console.error('Error registering user:', error);
+      console.error('[Signup] Error registering user:', error);
+      console.error('[Signup] Error details:', error.response?.data);
       // 登録失敗でもFirebaseユーザーは作成されているので続行
+      // ただし、エラーを再スローして呼び出し元で処理できるようにする
+      throw new Error(error.response?.data?.error || 'Failed to register user in backend');
     }
     
     await fetchUserInfo(userCredential.user);

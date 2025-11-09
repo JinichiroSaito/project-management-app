@@ -198,6 +198,7 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
 app.post('/api/users/register', authenticateToken, async (req, res) => {
   try {
     const { email, uid } = req.user;
+    console.log(`[Register] Registration request for:`, { email, uid });
     
     // 既存ユーザーをチェック
     const existingUser = await db.query(
@@ -220,13 +221,14 @@ app.post('/api/users/register', authenticateToken, async (req, res) => {
     );
     
     const newUser = result.rows[0];
-    console.log(`[Register] New user created:`, { id: newUser.id, email: newUser.email, is_approved: newUser.is_approved });
+    console.log(`[Register] New user created:`, { id: newUser.id, email: newUser.email, is_approved: newUser.is_approved, firebase_uid: newUser.firebase_uid });
     
     // 管理者に承認依頼メールを送信（通知のみ、承認は管理者ページで行う）
     try {
       await sendApprovalRequestEmail(email, null);
+      console.log(`[Register] Approval request email sent for: ${email}`);
     } catch (emailError) {
-      console.error('Failed to send approval request email:', emailError);
+      console.error('[Register] Failed to send approval request email:', emailError);
       // メール送信失敗でもユーザー登録は成功とする
     }
     
@@ -235,8 +237,9 @@ app.post('/api/users/register', authenticateToken, async (req, res) => {
       message: 'User registered. Waiting for admin approval.'
     });
   } catch (error) {
-    console.error('Error registering user:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[Register] Error registering user:', error);
+    console.error('[Register] Error stack:', error.stack);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
 
