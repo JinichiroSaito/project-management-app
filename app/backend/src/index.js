@@ -667,6 +667,218 @@ app.put('/api/users/profile', authenticateToken, async (req, res) => {
   }
 });
 
+// ==================== Project Application & Review APIs ====================
+
+// Get reviewers list (for project executors to select)
+app.get('/api/users/reviewers', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const result = await db.query(
+      'SELECT id, name, email, company, department FROM users WHERE position = $1 AND is_approved = TRUE ORDER BY name',
+      ['reviewer']
+    );
+    
+    console.log(`[Reviewers] Fetched ${result.rows.length} reviewers`);
+    res.json({ reviewers: result.rows });
+  } catch (error) {
+    console.error('Error fetching reviewers:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Submit project application (executor only)
+app.post('/api/projects/:id/submit', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // 現在のユーザー情報を取得
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // プロジェクトの所有者を確認
+    const project = await db.query(
+      'SELECT executor_id, application_status, requested_amount, reviewer_id FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const projectData = project.rows[0];
+    
+    if (projectData.executor_id !== currentUser.rows[0].id) {
+      return res.status(403).json({ error: 'Only the project executor can submit the application' });
+    }
+    
+    if (projectData.application_status !== 'draft') {
+      return res.status(400).json({ error: 'Project application has already been submitted' });
+    }
+    
+    if (!projectData.reviewer_id) {
+      return res.status(400).json({ error: 'Reviewer must be assigned before submission' });
+    }
+    
+    // 申請を提出
+    const result = await db.query(
+      'UPDATE projects SET application_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+      ['submitted', id]
+    );
+    
+    res.json({
+      project: result.rows[0],
+      message: 'Project application submitted successfully'
+    });
+  } catch (error) {
+    console.error('Error submitting project application:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Review project application (reviewer only)
+app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { decision, review_comment } = req.body; // decision: 'approved' or 'rejected'
+    
+    if (!decision || !['approved', 'rejected'].includes(decision)) {
+      return res.status(400).json({ error: 'Decision must be either "approved" or "rejected"' });
+    }
+    
+    // 現在のユーザー情報を取得
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // プロジェクトの審査者を確認
+    const project = await db.query(
+      'SELECT reviewer_id, application_status FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const projectData = project.rows[0];
+    
+    if (projectData.reviewer_id !== currentUser.rows[0].id) {
+      return res.status(403).json({ error: 'Only the assigned reviewer can review this application' });
+    }
+    
+    if (projectData.application_status !== 'submitted') {
+      return res.status(400).json({ error: 'Project application must be submitted before review' });
+    }
+    
+    // 審査を実行
+    const result = await db.query(
+      `UPDATE projects 
+       SET application_status = $1, 
+           review_comment = $2,
+           reviewed_at = CURRENT_TIMESTAMP,
+           reviewed_by = $3,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $4 RETURNING *`,
+      [decision, review_comment || null, currentUser.rows[0].id, id]
+    );
+    
+    // 承認された場合、ステータスをactiveに変更
+    if (decision === 'approved') {
+      await db.query(
+        'UPDATE projects SET status = $1 WHERE id = $2',
+        ['active', id]
+      );
+    }
+    
+    res.json({
+      project: result.rows[0],
+      message: `Project application ${decision} successfully`
+    });
+  } catch (error) {
+    console.error('Error reviewing project application:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get projects for review (reviewer only)
+app.get('/api/projects/review/pending', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    // 現在のユーザー情報を取得
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // 審査者であることを確認
+    if (currentUser.rows[0].position !== 'reviewer') {
+      return res.status(403).json({ error: 'Only reviewers can access this endpoint' });
+    }
+    
+    const result = await db.query(
+      `SELECT p.*, 
+              u1.name as executor_name, u1.email as executor_email,
+              u2.name as reviewer_name, u2.email as reviewer_email
+       FROM projects p
+       LEFT JOIN users u1 ON p.executor_id = u1.id
+       LEFT JOIN users u2 ON p.reviewer_id = u2.id
+       WHERE p.reviewer_id = $1 AND p.application_status = 'submitted'
+       ORDER BY p.created_at DESC`,
+      [currentUser.rows[0].id]
+    );
+    
+    res.json({ projects: result.rows });
+  } catch (error) {
+    console.error('Error fetching pending review projects:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get my projects (executor only)
+app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    // 現在のユーザー情報を取得
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const result = await db.query(
+      `SELECT p.*, 
+              u1.name as executor_name, u1.email as executor_email,
+              u2.name as reviewer_name, u2.email as reviewer_email
+       FROM projects p
+       LEFT JOIN users u1 ON p.executor_id = u1.id
+       LEFT JOIN users u2 ON p.reviewer_id = u2.id
+       WHERE p.executor_id = $1
+       ORDER BY p.created_at DESC`,
+      [currentUser.rows[0].id]
+    );
+    
+    res.json({ projects: result.rows });
+  } catch (error) {
+    console.error('Error fetching my projects:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
