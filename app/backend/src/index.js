@@ -968,6 +968,291 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
   }
 });
 
+// ==================== KPI Reports API ====================
+
+// Get KPI reports for a project
+app.get('/api/projects/:id/kpi-reports', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // プロジェクトの存在確認と権限確認
+    const project = await db.query(
+      'SELECT executor_id, requested_amount FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const currentUser = await db.query(
+      'SELECT id, position, is_admin FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const user = currentUser.rows[0];
+    const projectData = project.rows[0];
+    
+    // 実行者、審査者、または管理者のみアクセス可能
+    if (projectData.executor_id !== user.id && 
+        !user.is_admin && 
+        user.position !== 'reviewer') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    // KPI報告を取得
+    let result;
+    try {
+      result = await db.query(
+        `SELECT * FROM kpi_reports 
+         WHERE project_id = $1 
+         ORDER BY created_at DESC`,
+        [id]
+      );
+    } catch (queryError) {
+      // テーブルが存在しない場合（マイグレーション未実行）
+      if (queryError.message && queryError.message.includes('does not exist')) {
+        return res.json({ reports: [] });
+      }
+      throw queryError;
+    }
+    
+    res.json({ reports: result.rows });
+  } catch (error) {
+    console.error('Error fetching KPI reports:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Create or update KPI report
+app.post('/api/projects/:id/kpi-reports', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      report_type, 
+      verification_content, 
+      kpi_metrics, 
+      planned_date, 
+      planned_budget,
+      period_start,
+      period_end
+    } = req.body;
+    
+    if (!report_type) {
+      return res.status(400).json({ error: 'Report type is required' });
+    }
+    
+    // プロジェクトの存在確認と権限確認
+    const project = await db.query(
+      'SELECT executor_id, requested_amount FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const user = currentUser.rows[0];
+    const projectData = project.rows[0];
+    
+    // 実行者のみがKPI報告を作成可能
+    if (projectData.executor_id !== user.id) {
+      return res.status(403).json({ error: 'Only project executors can create KPI reports' });
+    }
+    
+    // KPI報告を作成
+    let result;
+    try {
+      result = await db.query(
+        `INSERT INTO kpi_reports 
+         (project_id, report_type, verification_content, kpi_metrics, planned_date, planned_budget, period_start, period_end, created_by, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft')
+         RETURNING *`,
+        [
+          id,
+          report_type,
+          verification_content || null,
+          kpi_metrics ? JSON.stringify(kpi_metrics) : null,
+          planned_date || null,
+          planned_budget || null,
+          period_start || null,
+          period_end || null,
+          user.id
+        ]
+      );
+    } catch (insertError) {
+      // テーブルが存在しない場合（マイグレーション未実行）
+      if (insertError.message && insertError.message.includes('does not exist')) {
+        return res.status(500).json({ 
+          error: 'Database migration required',
+          message: 'KPI reports table needs to be created. Please run migration 005_kpi_reports_enhancement.sql or contact an administrator.'
+        });
+      }
+      throw insertError;
+    }
+    
+    res.status(201).json({ report: result.rows[0] });
+  } catch (error) {
+    console.error('Error creating KPI report:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update KPI report
+app.put('/api/projects/:id/kpi-reports/:reportId', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id, reportId } = req.params;
+    const { 
+      verification_content, 
+      kpi_metrics, 
+      planned_date, 
+      planned_budget,
+      period_start,
+      period_end,
+      status
+    } = req.body;
+    
+    // プロジェクトとKPI報告の存在確認
+    const project = await db.query(
+      'SELECT executor_id FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const kpiReport = await db.query(
+      'SELECT created_by FROM kpi_reports WHERE id = $1 AND project_id = $2',
+      [reportId, id]
+    );
+    
+    if (kpiReport.rows.length === 0) {
+      return res.status(404).json({ error: 'KPI report not found' });
+    }
+    
+    const currentUser = await db.query(
+      'SELECT id FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // 実行者のみがKPI報告を更新可能
+    if (project.rows[0].executor_id !== currentUser.rows[0].id) {
+      return res.status(403).json({ error: 'Only project executors can update KPI reports' });
+    }
+    
+    // 更新フィールドを構築
+    const updateFields = [];
+    const updateValues = [];
+    let paramIndex = 1;
+    
+    if (verification_content !== undefined) {
+      updateFields.push(`verification_content = $${paramIndex++}`);
+      updateValues.push(verification_content);
+    }
+    if (kpi_metrics !== undefined) {
+      updateFields.push(`kpi_metrics = $${paramIndex++}`);
+      updateValues.push(JSON.stringify(kpi_metrics));
+    }
+    if (planned_date !== undefined) {
+      updateFields.push(`planned_date = $${paramIndex++}`);
+      updateValues.push(planned_date);
+    }
+    if (planned_budget !== undefined) {
+      updateFields.push(`planned_budget = $${paramIndex++}`);
+      updateValues.push(planned_budget);
+    }
+    if (period_start !== undefined) {
+      updateFields.push(`period_start = $${paramIndex++}`);
+      updateValues.push(period_start);
+    }
+    if (period_end !== undefined) {
+      updateFields.push(`period_end = $${paramIndex++}`);
+      updateValues.push(period_end);
+    }
+    if (status !== undefined) {
+      updateFields.push(`status = $${paramIndex++}`);
+      updateValues.push(status);
+      if (status === 'submitted') {
+        updateFields.push(`submitted_at = CURRENT_TIMESTAMP`);
+      }
+    }
+    
+    updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
+    updateValues.push(reportId);
+    
+    const result = await db.query(
+      `UPDATE kpi_reports 
+       SET ${updateFields.join(', ')}
+       WHERE id = $${paramIndex}
+       RETURNING *`,
+      updateValues
+    );
+    
+    res.json({ report: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating KPI report:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete KPI report
+app.delete('/api/projects/:id/kpi-reports/:reportId', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id, reportId } = req.params;
+    
+    // プロジェクトとKPI報告の存在確認
+    const project = await db.query(
+      'SELECT executor_id FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const currentUser = await db.query(
+      'SELECT id FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // 実行者のみがKPI報告を削除可能
+    if (project.rows[0].executor_id !== currentUser.rows[0].id) {
+      return res.status(403).json({ error: 'Only project executors can delete KPI reports' });
+    }
+    
+    await db.query(
+      'DELETE FROM kpi_reports WHERE id = $1 AND project_id = $2',
+      [reportId, id]
+    );
+    
+    res.json({ message: 'KPI report deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting KPI report:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Start server
 app.listen(PORT, () => {
