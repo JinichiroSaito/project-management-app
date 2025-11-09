@@ -226,10 +226,16 @@ app.post('/api/users/register', authenticateToken, async (req, res) => {
     
     // ユーザーに登録確認メールを送信
     try {
+      console.log(`[Register] Attempting to send registration confirmation email to: ${email}`);
       await sendRegistrationConfirmationEmail(email);
-      console.log(`[Register] Registration confirmation email sent to: ${email}`);
+      console.log(`[Register] ✓ Registration confirmation email sent successfully to: ${email}`);
     } catch (emailError) {
-      console.error('[Register] Failed to send registration confirmation email:', emailError);
+      console.error('[Register] ✗ Failed to send registration confirmation email:', emailError);
+      console.error('[Register] Email error details:', {
+        message: emailError.message,
+        code: emailError.code,
+        stack: emailError.stack
+      });
       // メール送信失敗でもユーザー登録は成功とする
     }
     
