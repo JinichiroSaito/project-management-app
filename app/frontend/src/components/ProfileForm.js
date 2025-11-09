@@ -11,25 +11,37 @@ const ProfileForm = ({ onComplete }) => {
     position: ''
   });
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const { refreshUserInfo } = useAuth();
+  const { refreshUserInfo, userInfo } = useAuth();
   const { t } = useLanguage();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccessMessage('');
     setLoading(true);
 
     try {
       await api.put('/api/users/profile', formData);
       await refreshUserInfo();
-      if (onComplete) {
-        onComplete();
+      
+      // プロフィール送信成功メッセージを表示
+      if (userInfo && !userInfo.is_approved) {
+        setSuccessMessage(t('profile.submitted', 'Profile submitted successfully! An approval request has been sent to the administrator.'));
+      } else {
+        setSuccessMessage(t('profile.saved', 'Profile saved successfully!'));
       }
+      
+      // 少し待ってからリロード（メッセージを表示する時間を確保）
+      setTimeout(() => {
+        if (onComplete) {
+          onComplete();
+        }
+      }, 2000);
     } catch (error) {
       console.error('Error updating profile:', error);
       setError(error.response?.data?.error || 'Failed to update profile');
-    } finally {
       setLoading(false);
     }
   };
@@ -47,6 +59,12 @@ const ProfileForm = ({ onComplete }) => {
         {error && (
           <div className="mb-4 rounded-md bg-red-50 p-4">
             <p className="text-sm text-red-800">{error}</p>
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="mb-4 rounded-md bg-green-50 p-4 border border-green-200">
+            <p className="text-sm text-green-800">{successMessage}</p>
           </div>
         )}
 

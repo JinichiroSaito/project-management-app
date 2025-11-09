@@ -17,15 +17,17 @@ const Login = () => {
     try {
       if (isSignup) {
         await signup(email, password);
-        // 通常はここに到達しない（承認待ちの場合はログアウトされる）
+        // サインアップ成功後、プロフィール入力画面が表示される（App.jsで処理）
+        // エラーメッセージは表示しない（正常なフロー）
       } else {
         await login(email, password);
       }
     } catch (error) {
-      // 承認待ちの場合は特別なメッセージを表示
+      // 承認待ちの場合は特別なメッセージを表示（ログイン時のみ）
       if (error.message === 'PENDING_APPROVAL') {
         if (isSignup) {
-          setError(t('signUp.pendingApproval', 'Registration successful! Please check your email and click the approval link to activate your account.'));
+          // サインアップ時はエラーメッセージを表示しない（プロフィール入力画面に遷移するため）
+          // エラーは表示せず、そのまま続行
         } else {
           setError(t('signIn.pendingApproval', 'Your account is pending approval. Please check your email and click the approval link to activate your account.'));
         }

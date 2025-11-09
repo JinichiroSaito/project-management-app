@@ -97,6 +97,8 @@ export const translations = {
     'profile.position.reviewer': 'Project Reviewer',
     'profile.save': 'Save Profile',
     'profile.saving': 'Saving...',
+    'profile.saved': 'Profile saved successfully!',
+    'profile.submitted': 'Profile submitted successfully! An approval request has been sent to the administrator.',
   },
   ja: {
     // Login
@@ -196,6 +198,8 @@ export const translations = {
     'profile.position.reviewer': 'プロジェクト審査者',
     'profile.save': 'プロフィールを保存',
     'profile.saving': '保存中...',
+    'profile.saved': 'プロフィールを保存しました！',
+    'profile.submitted': 'プロフィールを送信しました！管理者に承認依頼が送信されました。',
   },
 };
 

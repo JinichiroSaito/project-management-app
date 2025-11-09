@@ -87,17 +87,11 @@ export const AuthProvider = ({ children }) => {
       // ユーザー情報を取得して承認状態を確認
       const userInfoData = await fetchUserInfo(userCredential.user);
       
-      // 承認待ちの場合は自動的にログアウト
+      // 承認待ちの場合は、プロフィール入力画面を表示するため、ログアウトしない
+      // プロフィール情報が入力されていない場合は、App.jsでプロフィール入力画面が表示される
       if (userInfoData && !userInfoData.is_approved) {
-        console.log('[Signup] User is pending approval, will logout after error message is shown...');
-        // エラーメッセージを表示するために、少し待ってからログアウト
-        // エラーを先にスローして、エラーメッセージが表示された後にログアウト
-        setTimeout(async () => {
-          await signOut(auth);
-          setUserInfo(null);
-        }, 2000); // 2秒待ってからログアウト（エラーメッセージを表示する時間を確保）
-        // 承認待ちであることを示すエラーをスロー（実際にはエラーではなく情報メッセージ）
-        throw new Error('PENDING_APPROVAL');
+        console.log('[Signup] User is pending approval, profile form will be shown');
+        // ログアウトせず、そのまま続行（App.jsでプロフィール入力画面が表示される）
       }
     } catch (error) {
       console.error('[Signup] Error registering user:', error);
