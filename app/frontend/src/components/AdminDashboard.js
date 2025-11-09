@@ -110,6 +110,42 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleEdit = (user) => {
+    setEditingUser(user.id);
+    setEditFormData({
+      name: user.name || '',
+      company: user.company || '',
+      department: user.department || '',
+      position: user.position || '',
+      is_admin: user.is_admin || false,
+      is_approved: user.is_approved || false
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingUser(null);
+    setEditFormData({});
+  };
+
+  const handleSaveEdit = async (userId) => {
+    try {
+      await api.put(`/api/admin/users/${userId}`, editFormData);
+      setError('');
+      setSuccessMessage(t('admin.updatedSuccess', 'User updated successfully'));
+      setTimeout(() => setSuccessMessage(''), 3000);
+      setEditingUser(null);
+      setEditFormData({});
+      if (activeTab === 'pending') {
+        fetchPendingUsers();
+      } else {
+        fetchAllUsers();
+      }
+    } catch (error) {
+      console.error('Error updating user:', error);
+      setError(error.response?.data?.error || 'Failed to update user');
+    }
+  };
+
   const currentUsers = activeTab === 'pending' ? pendingUsers : allUsers;
   const isPendingTab = activeTab === 'pending';
 
@@ -226,37 +262,101 @@ const AdminDashboard = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {user.email}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {user.name || '-'}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {editingUser === user.id ? (
+                      <input
+                        type="text"
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-2 py-1 border"
+                        value={editFormData.name}
+                        onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                      />
+                    ) : (
+                      user.name || '-'
+                    )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {user.company || '-'}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {editingUser === user.id ? (
+                      <input
+                        type="text"
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-2 py-1 border"
+                        value={editFormData.company}
+                        onChange={(e) => setEditFormData({ ...editFormData, company: e.target.value })}
+                      />
+                    ) : (
+                      user.company || '-'
+                    )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {user.department || '-'}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {editingUser === user.id ? (
+                      <input
+                        type="text"
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-2 py-1 border"
+                        value={editFormData.department}
+                        onChange={(e) => setEditFormData({ ...editFormData, department: e.target.value })}
+                      />
+                    ) : (
+                      user.department || '-'
+                    )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {user.position === 'executor' 
-                      ? t('profile.position.executor', 'Project Executor')
-                      : user.position === 'reviewer'
-                      ? t('profile.position.reviewer', 'Project Reviewer')
-                      : user.position || '-'}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {editingUser === user.id ? (
+                      <select
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-2 py-1 border"
+                        value={editFormData.position || ''}
+                        onChange={(e) => setEditFormData({ ...editFormData, position: e.target.value })}
+                      >
+                        <option value="">{t('admin.selectPosition', 'Select Position')}</option>
+                        <option value="executor">{t('profile.position.executor', 'Project Executor')}</option>
+                        <option value="reviewer">{t('profile.position.reviewer', 'Project Reviewer')}</option>
+                      </select>
+                    ) : (
+                      user.position === 'executor' 
+                        ? t('profile.position.executor', 'Project Executor')
+                        : user.position === 'reviewer'
+                        ? t('profile.position.reviewer', 'Project Reviewer')
+                        : user.position || '-'
+                    )}
                   </td>
                   {!isPendingTab && (
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        user.is_approved 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {user.is_approved 
-                          ? t('admin.status.approved', 'Approved')
-                          : t('admin.status.pending', 'Pending')}
-                      </span>
-                      {user.is_admin && (
-                        <span className="ml-2 px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
-                          {t('admin.status.admin', 'Admin')}
-                        </span>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {editingUser === user.id ? (
+                        <div className="space-y-2">
+                          <label className="flex items-center">
+                            <input
+                              type="checkbox"
+                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                              checked={editFormData.is_admin || false}
+                              onChange={(e) => setEditFormData({ ...editFormData, is_admin: e.target.checked })}
+                            />
+                            <span className="ml-2 text-xs">{t('admin.isAdmin', 'Admin')}</span>
+                          </label>
+                          <label className="flex items-center">
+                            <input
+                              type="checkbox"
+                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                              checked={editFormData.is_approved || false}
+                              onChange={(e) => setEditFormData({ ...editFormData, is_approved: e.target.checked })}
+                            />
+                            <span className="ml-2 text-xs">{t('admin.isApproved', 'Approved')}</span>
+                          </label>
+                        </div>
+                      ) : (
+                        <>
+                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                            user.is_approved 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {user.is_approved 
+                              ? t('admin.status.approved', 'Approved')
+                              : t('admin.status.pending', 'Pending')}
+                          </span>
+                          {user.is_admin && (
+                            <span className="ml-2 px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                              {t('admin.status.admin', 'Admin')}
+                            </span>
+                          )}
+                        </>
                       )}
                     </td>
                   )}
@@ -265,20 +365,45 @@ const AdminDashboard = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex space-x-2">
-                      {!user.is_approved && (
-                        <button
-                          onClick={() => handleApprove(user.id)}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-                        >
-                          {t('admin.approve', 'Approve')}
-                        </button>
+                      {editingUser === user.id ? (
+                        <>
+                          <button
+                            onClick={() => handleSaveEdit(user.id)}
+                            className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md text-xs font-medium"
+                          >
+                            {t('admin.save', 'Save')}
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded-md text-xs font-medium"
+                          >
+                            {t('admin.cancel', 'Cancel')}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleEdit(user)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-xs font-medium"
+                          >
+                            {t('admin.edit', 'Edit')}
+                          </button>
+                          {!user.is_approved && (
+                            <button
+                              onClick={() => handleApprove(user.id)}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-md text-xs font-medium"
+                            >
+                              {t('admin.approve', 'Approve')}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDelete(user.id, user.email)}
+                            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md text-xs font-medium"
+                          >
+                            {t('admin.delete', 'Delete')}
+                          </button>
+                        </>
                       )}
-                      <button
-                        onClick={() => handleDelete(user.id, user.email)}
-                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-                      >
-                        {t('admin.delete', 'Delete')}
-                      </button>
                     </div>
                   </td>
                 </tr>
