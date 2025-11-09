@@ -52,7 +52,13 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
       }
     } catch (error) {
       console.error('Error saving project application:', error);
-      setError(error.response?.data?.error || 'Failed to save project application');
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || t('projectApplication.error.save', 'Failed to save project application');
+      setError(errorMessage);
+      
+      // マイグレーションが必要な場合の特別なメッセージ
+      if (error.response?.data?.error === 'Database migration required') {
+        setError(t('projectApplication.migrationRequired', 'Database migration is required. Please contact an administrator.'));
+      }
     } finally {
       setLoading(false);
     }

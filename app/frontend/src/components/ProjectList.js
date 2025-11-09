@@ -27,10 +27,13 @@ const ProjectList = () => {
   const fetchProjects = async () => {
     try {
       const response = await api.get('/api/projects');
-      setProjects(response.data.projects);
+      setProjects(response.data.projects || []);
+      setError('');
       setLoading(false);
     } catch (error) {
-      setError(t('projects.error.fetch'));
+      console.error('Error fetching projects:', error);
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || t('projects.error.fetch');
+      setError(errorMessage);
       setLoading(false);
     }
   };

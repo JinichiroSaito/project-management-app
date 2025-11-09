@@ -195,10 +195,26 @@ app.post('/api/projects', authenticateToken, requireApproved, async (req, res) =
       }
     }
     
-    const result = await db.query(
-      'INSERT INTO projects (name, description, status, executor_id, reviewer_id, requested_amount, application_status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-      [name, description || '', 'planning', executorId, reviewer_id || null, requested_amount, 'draft']
-    );
+    // 新しいカラムが存在するかチェックしてからINSERT
+    let result;
+    try {
+      // 新しいカラムが存在する場合のINSERT
+      result = await db.query(
+        'INSERT INTO projects (name, description, status, executor_id, reviewer_id, requested_amount, application_status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+        [name, description || '', 'planning', executorId, reviewer_id || null, requested_amount, 'draft']
+      );
+    } catch (insertError) {
+      // 新しいカラムが存在しない場合（マイグレーション未実行）
+      if (insertError.message && insertError.message.includes('column') && insertError.message.includes('does not exist')) {
+        console.error('[Project Create] Database migration required:', insertError.message);
+        return res.status(500).json({ 
+          error: 'Database migration required',
+          message: 'The projects table needs to be updated. Please run migration 004_project_application_schema.sql or contact an administrator.',
+          details: process.env.NODE_ENV === 'development' ? insertError.message : undefined
+        });
+      }
+      throw insertError;
+    }
     
     res.status(201).json({
       ...result.rows[0],
@@ -206,7 +222,11 @@ app.post('/api/projects', authenticateToken, requireApproved, async (req, res) =
     });
   } catch (error) {
     console.error('Error creating project:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error details:', error.message, error.stack);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

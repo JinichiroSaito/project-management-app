@@ -126,6 +126,8 @@ export const translations = {
     'projectApplication.reportingRequirement.over500m': 'Semi-annual: Set KPIs and budget, report usage and results once. Also required to apply for next year budget at year-end',
     'projectApplication.noReviewers': 'No reviewers available. Please contact an administrator.',
     'projectApplication.errorFetchingReviewers': 'Failed to fetch reviewers. Please try again.',
+    'projectApplication.error.save': 'Failed to save project application',
+    'projectApplication.migrationRequired': 'Database migration is required. Please contact an administrator.',
     
     // Review
     'review.title': 'Review Dashboard',
@@ -274,6 +276,8 @@ export const translations = {
     'projectApplication.reportingRequirement.over500m': '半年毎にKPIと予算を設定し、使用金額と結果を1回報告。年末には翌年に使用する予算の金額を申請',
     'projectApplication.noReviewers': '審査者がいません。管理者に連絡してください。',
     'projectApplication.errorFetchingReviewers': '審査者の取得に失敗しました。再度お試しください。',
+    'projectApplication.error.save': 'プロジェクト申請の保存に失敗しました',
+    'projectApplication.migrationRequired': 'データベースマイグレーションが必要です。管理者に連絡してください。',
     
     // Review
     'review.title': '審査ダッシュボード',
