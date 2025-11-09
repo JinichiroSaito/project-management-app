@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './AuthContext';
 import { LanguageProvider, useLanguage } from './LanguageContext';
 import Login from './components/Login';
@@ -6,29 +6,11 @@ import Header from './components/Header';
 import ProjectList from './components/ProjectList';
 import AdminDashboard from './components/AdminDashboard';
 import ProfileForm from './components/ProfileForm';
-import ApprovePage from './components/ApprovePage';
 
 function AppContentInner() {
   const { user, userInfo } = useAuth();
   const [showAdmin, setShowAdmin] = useState(false);
-  const [approvalToken, setApprovalToken] = useState(null);
   const { t } = useLanguage();
-
-  // URLパラメータから承認トークンを取得
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
-    if (token) {
-      setApprovalToken(token);
-      // URLからトークンを削除（クリーンなURLにする）
-      window.history.replaceState({}, document.title, '/approve');
-    }
-  }, []);
-
-  // 承認ページを表示
-  if (approvalToken) {
-    return <ApprovePage token={approvalToken} />;
-  }
 
   if (!user) {
     return <Login />;
