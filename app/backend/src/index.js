@@ -308,7 +308,7 @@ app.get('/api/admin/users/pending', authenticateToken, requireAdmin, async (req,
 app.post('/api/admin/users/resend-approval-requests', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT id, email, name FROM users WHERE is_approved = FALSE ORDER BY created_at DESC'
+      'SELECT id, email, name, company, department, position FROM users WHERE is_approved = FALSE ORDER BY created_at DESC'
     );
     
     if (result.rows.length === 0) {
@@ -321,8 +321,13 @@ app.post('/api/admin/users/resend-approval-requests', authenticateToken, require
     const results = [];
     for (const user of result.rows) {
       try {
-        await sendApprovalRequestEmail(user.email, user.name);
-        results.push({ email: user.email, status: 'sent' });
+        // プロフィール情報が入力されている場合のみ送信
+        if (user.name && user.company) {
+          await sendApprovalRequestEmail(user.email, user.name, user.company, user.department || '', user.position || '');
+          results.push({ email: user.email, status: 'sent' });
+        } else {
+          results.push({ email: user.email, status: 'skipped', reason: 'Profile not complete' });
+        }
       } catch (error) {
         console.error(`Failed to send email to ${user.email}:`, error);
         results.push({ email: user.email, status: 'failed', error: error.message });
