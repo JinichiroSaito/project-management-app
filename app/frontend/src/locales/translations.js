@@ -73,6 +73,15 @@ export const translations = {
     'approval.pending': 'Account Pending Approval',
     'approval.message': 'Your account is pending approval. Please wait for an administrator to approve your registration.',
     'approval.profileRequired': 'Please complete your profile below. Once your profile is submitted, an approval request will be sent to the administrator.',
+    'approval.processing': 'Processing approval...',
+    'approval.success': 'Account Approved',
+    'approval.approved': 'Your account has been approved successfully! You can now log in.',
+    'approval.alreadyApproved': 'Your account is already approved. You can now log in.',
+    'approval.alreadyApprovedTitle': 'Already Approved',
+    'approval.error': 'An error occurred while approving your account. Please contact the administrator.',
+    'approval.errorTitle': 'Approval Failed',
+    'approval.noToken': 'No approval token provided.',
+    'approval.goToLogin': 'Go to Login',
     
     // Profile
     'profile.title': 'Complete Your Profile',
@@ -161,6 +170,15 @@ export const translations = {
     'approval.pending': 'アカウント承認待ち',
     'approval.message': 'アカウントが承認待ちです。管理者による承認をお待ちください。',
     'approval.profileRequired': '以下のプロフィール情報を入力してください。プロフィールを送信すると、管理者に承認依頼が送信されます。',
+    'approval.processing': '承認処理中...',
+    'approval.success': 'アカウント承認完了',
+    'approval.approved': 'アカウントが正常に承認されました！ログインできます。',
+    'approval.alreadyApproved': 'アカウントは既に承認されています。ログインできます。',
+    'approval.alreadyApprovedTitle': '既に承認済み',
+    'approval.error': 'アカウントの承認中にエラーが発生しました。管理者に連絡してください。',
+    'approval.errorTitle': '承認失敗',
+    'approval.noToken': '承認トークンが提供されていません。',
+    'approval.goToLogin': 'ログインページへ',
     
     // Profile
     'profile.title': 'プロフィールを完成させてください',

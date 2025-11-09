@@ -142,9 +142,10 @@ ${appUrl}
   }
 }
 
-// ユーザーへの登録確認メール送信
-async function sendRegistrationConfirmationEmail(userEmail) {
+// ユーザーへの登録確認メール送信（承認リンクを含む）
+async function sendRegistrationConfirmationEmail(userEmail, approvalToken) {
   const appUrl = process.env.APP_URL || 'https://frontend-dev-823277232006.asia-northeast1.run.app';
+  const approvalUrl = `${appUrl}/approve?token=${approvalToken}`;
   
   const transporter = createTransporter();
   
@@ -155,19 +156,23 @@ async function sendRegistrationConfirmationEmail(userEmail) {
     html: `
       <h2>登録ありがとうございます</h2>
       <p>${userEmail} でプロジェクト管理アプリに登録されました。</p>
-      <p>アカウントが承認され次第、以下のリンクからログインしてプロフィール情報を入力してください。</p>
-      <p><a href="${appUrl}" style="color: #4F46E5; text-decoration: underline;">${appUrl}</a></p>
-      <p style="color: #666; font-size: 14px; margin-top: 20px;">※ アカウントの承認には管理者の確認が必要です。承認が完了するまでお待ちください。</p>
+      <p>以下のリンクをクリックして、アカウントを承認してください：</p>
+      <p style="margin: 20px 0;">
+        <a href="${approvalUrl}" style="display: inline-block; padding: 12px 24px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">アカウントを承認する</a>
+      </p>
+      <p style="color: #666; font-size: 14px;">または、以下のURLをブラウザにコピー＆ペーストしてください：</p>
+      <p style="color: #666; font-size: 12px; word-break: break-all;">${approvalUrl}</p>
+      <p style="color: #666; font-size: 14px; margin-top: 20px;">※ このリンクは24時間有効です。期限が過ぎた場合は、管理者に連絡してください。</p>
     `,
     text: `
 登録ありがとうございます
 
 ${userEmail} でプロジェクト管理アプリに登録されました。
 
-アカウントが承認され次第、以下のリンクからログインしてプロフィール情報を入力してください。
-${appUrl}
+以下のリンクをクリックして、アカウントを承認してください：
+${approvalUrl}
 
-※ アカウントの承認には管理者の確認が必要です。承認が完了するまでお待ちください。
+※ このリンクは24時間有効です。期限が過ぎた場合は、管理者に連絡してください。
     `
   };
   

@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const db = require('./db');
 const admin = require('firebase-admin');
 const { authenticateToken, optionalAuth, requireAdmin, requireApproved, initializeFirebase } = require('./middleware/auth');
@@ -215,19 +216,24 @@ app.post('/api/users/register', authenticateToken, async (req, res) => {
       });
     }
     
-    // 新規ユーザーを作成（承認待ち状態）
+    // 承認トークンを生成（24時間有効）
+    const approvalToken = crypto.randomBytes(32).toString('hex');
+    const tokenExpiresAt = new Date();
+    tokenExpiresAt.setHours(tokenExpiresAt.getHours() + 24);
+    
+    // 新規ユーザーを作成（承認待ち状態、承認トークンを含む）
     const result = await db.query(
-      'INSERT INTO users (firebase_uid, email, is_admin, is_approved) VALUES ($1, $2, $3, $4) RETURNING *',
-      [uid, email, false, false]
+      'INSERT INTO users (firebase_uid, email, is_admin, is_approved, approval_token, approval_token_expires_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [uid, email, false, false, approvalToken, tokenExpiresAt]
     );
     
     const newUser = result.rows[0];
     console.log(`[Register] New user created:`, { id: newUser.id, email: newUser.email, is_approved: newUser.is_approved, firebase_uid: newUser.firebase_uid });
     
-    // ユーザーに登録確認メールを送信
+    // ユーザーに登録確認メールを送信（承認リンクを含む）
     try {
       console.log(`[Register] Attempting to send registration confirmation email to: ${email}`);
-      await sendRegistrationConfirmationEmail(email);
+      await sendRegistrationConfirmationEmail(email, approvalToken);
       console.log(`[Register] ✓ Registration confirmation email sent successfully to: ${email}`);
     } catch (emailError) {
       console.error('[Register] ✗ Failed to send registration confirmation email:', emailError);
@@ -352,13 +358,68 @@ app.post('/api/admin/users/resend-approval-requests', authenticateToken, require
   }
 });
 
+// Public endpoint: Approve user via email token
+app.get('/api/users/approve', async (req, res) => {
+  try {
+    const { token } = req.query;
+    
+    if (!token) {
+      return res.status(400).json({ error: 'Approval token is required' });
+    }
+    
+    // トークンでユーザーを検索（有効期限内）
+    const result = await db.query(
+      'SELECT id, email, name, is_approved, approval_token_expires_at FROM users WHERE approval_token = $1 AND approval_token_expires_at > NOW()',
+      [token]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired approval token' });
+    }
+    
+    const user = result.rows[0];
+    
+    // 既に承認済みの場合
+    if (user.is_approved) {
+      return res.json({
+        message: 'Account is already approved',
+        user: user
+      });
+    }
+    
+    // ユーザーを承認
+    const updateResult = await db.query(
+      'UPDATE users SET is_approved = TRUE, approval_token = NULL, approval_token_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+      [user.id]
+    );
+    
+    const approvedUser = updateResult.rows[0];
+    console.log(`[Approve] User approved via email token: ${user.email}`);
+    
+    // ユーザーに承認通知メールを送信
+    try {
+      await sendApprovalNotificationEmail(user.email, user.name);
+    } catch (emailError) {
+      console.error('Failed to send approval notification email:', emailError);
+    }
+    
+    res.json({
+      user: approvedUser,
+      message: 'Account approved successfully'
+    });
+  } catch (error) {
+    console.error('[Approve] Error approving user via token:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Admin: Approve user
 app.post('/api/admin/users/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     
     const result = await db.query(
-      'UPDATE users SET is_approved = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+      'UPDATE users SET is_approved = TRUE, approval_token = NULL, approval_token_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
       [id]
     );
     
