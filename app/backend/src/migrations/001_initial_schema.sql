@@ -11,9 +11,5 @@ CREATE TABLE IF NOT EXISTS projects (
 -- Create index on status
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 
--- Insert sample data
-INSERT INTO projects (name, description, status) VALUES
-  ('Project Alpha', 'First project - Alpha development', 'active'),
-  ('Project Beta', 'Beta testing phase', 'planning'),
-  ('Project Gamma', 'Completed gamma release', 'completed')
-ON CONFLICT DO NOTHING;
+-- Note: Sample data insertion removed to prevent duplicate projects on each deployment
+-- If you need sample data, insert it manually or use a separate seed script
