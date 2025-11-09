@@ -41,6 +41,25 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleDelete = async (userId, userEmail) => {
+    const confirmMessage = t('admin.deleteConfirm', `Are you sure you want to delete user ${userEmail}?`).replace('{email}', userEmail);
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+    
+    try {
+      await api.delete(`/api/admin/users/${userId}`);
+      setPendingUsers(pendingUsers.filter(user => user.id !== userId));
+      setError('');
+      setSuccessMessage(t('admin.deletedSuccess', 'User deleted successfully'));
+      setTimeout(() => setSuccessMessage(''), 3000);
+      fetchPendingUsers(); // リストを更新
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      setError(error.response?.data?.error || 'Failed to delete user');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -122,18 +141,30 @@ const AdminDashboard = () => {
                     {user.department || '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {user.position || '-'}
+                    {user.position === 'executor' 
+                      ? t('profile.position.executor', 'Project Executor')
+                      : user.position === 'reviewer'
+                      ? t('profile.position.reviewer', 'Project Reviewer')
+                      : user.position || '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(user.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button
-                      onClick={() => handleApprove(user.id)}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-                    >
-                      {t('admin.approve', 'Approve')}
-                    </button>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => handleApprove(user.id)}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+                      >
+                        {t('admin.approve', 'Approve')}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(user.id, user.email)}
+                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+                      >
+                        {t('admin.delete', 'Delete')}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

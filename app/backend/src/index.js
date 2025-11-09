@@ -238,6 +238,20 @@ app.post('/api/users/register', authenticateToken, async (req, res) => {
   }
 });
 
+// Admin: Get all users
+app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await db.query(
+      'SELECT id, email, name, company, department, position, is_admin, is_approved, created_at FROM users ORDER BY created_at DESC'
+    );
+    
+    res.json({ users: result.rows });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Admin: Get pending approval users
 app.get('/api/admin/users/pending', authenticateToken, requireAdmin, async (req, res) => {
   try {
@@ -318,6 +332,40 @@ app.post('/api/admin/users/:id/approve', authenticateToken, requireAdmin, async 
     });
   } catch (error) {
     console.error('Error approving user:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Admin: Delete user
+app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // 自分自身を削除できないようにチェック
+    const currentUser = await db.query(
+      'SELECT id FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length > 0 && currentUser.rows[0].id === parseInt(id)) {
+      return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+    
+    const result = await db.query(
+      'DELETE FROM users WHERE id = $1 RETURNING *',
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({
+      message: 'User deleted successfully',
+      deletedUser: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error deleting user:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
