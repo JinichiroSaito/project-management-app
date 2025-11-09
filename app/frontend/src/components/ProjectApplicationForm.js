@@ -22,9 +22,14 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
   const fetchReviewers = async () => {
     try {
       const response = await api.get('/api/users/reviewers');
-      setReviewers(response.data.reviewers);
+      console.log('[ProjectApplicationForm] Fetched reviewers:', response.data.reviewers);
+      setReviewers(response.data.reviewers || []);
+      if (!response.data.reviewers || response.data.reviewers.length === 0) {
+        setError(t('projectApplication.noReviewers', 'No reviewers available. Please contact an administrator.'));
+      }
     } catch (error) {
       console.error('Error fetching reviewers:', error);
+      setError(error.response?.data?.error || t('projectApplication.errorFetchingReviewers', 'Failed to fetch reviewers. Please try again.'));
     }
   };
 

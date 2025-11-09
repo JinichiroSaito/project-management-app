@@ -124,6 +124,8 @@ export const translations = {
     'projectApplication.reportingRequirement.under100m': 'External MVP development and verification: Set KPIs and report results',
     'projectApplication.reportingRequirement.100mTo500m': 'Internal MVP development and external MVP development: Set KPIs for each and report',
     'projectApplication.reportingRequirement.over500m': 'Semi-annual: Set KPIs and budget, report usage and results once. Also required to apply for next year budget at year-end',
+    'projectApplication.noReviewers': 'No reviewers available. Please contact an administrator.',
+    'projectApplication.errorFetchingReviewers': 'Failed to fetch reviewers. Please try again.',
     
     // Review
     'review.title': 'Review Dashboard',
@@ -270,6 +272,8 @@ export const translations = {
     'projectApplication.reportingRequirement.under100m': '社外のMVP開発と検証について、KPIを設定し結果を報告',
     'projectApplication.reportingRequirement.100mTo500m': '社内のMVP開発と社外のMVP開発それぞれでKPIを設定し、報告',
     'projectApplication.reportingRequirement.over500m': '半年毎にKPIと予算を設定し、使用金額と結果を1回報告。年末には翌年に使用する予算の金額を申請',
+    'projectApplication.noReviewers': '審査者がいません。管理者に連絡してください。',
+    'projectApplication.errorFetchingReviewers': '審査者の取得に失敗しました。再度お試しください。',
     
     // Review
     'review.title': '審査ダッシュボード',
