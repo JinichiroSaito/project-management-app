@@ -498,6 +498,67 @@ app.post('/api/admin/users/:id/approve', authenticateToken, requireAdmin, async 
   }
 });
 
+// Admin: Update user (including position)
+app.put('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, company, department, position, is_admin, is_approved } = req.body;
+    
+    // 更新するフィールドを動的に構築
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    if (name !== undefined) {
+      updates.push(`name = $${paramIndex++}`);
+      values.push(name);
+    }
+    if (company !== undefined) {
+      updates.push(`company = $${paramIndex++}`);
+      values.push(company);
+    }
+    if (department !== undefined) {
+      updates.push(`department = $${paramIndex++}`);
+      values.push(department);
+    }
+    if (position !== undefined) {
+      updates.push(`position = $${paramIndex++}`);
+      values.push(position);
+    }
+    if (is_admin !== undefined) {
+      updates.push(`is_admin = $${paramIndex++}`);
+      values.push(is_admin);
+    }
+    if (is_approved !== undefined) {
+      updates.push(`is_approved = $${paramIndex++}`);
+      values.push(is_approved);
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+    
+    const query = `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
+    
+    const result = await db.query(query, values);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({
+      user: result.rows[0],
+      message: 'User updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Admin: Delete user
 app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
