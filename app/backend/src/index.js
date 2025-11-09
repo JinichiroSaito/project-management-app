@@ -104,6 +104,98 @@ app.get('/api/projects', optionalAuth, async (req, res) => {
   }
 });
 
+// Get my projects (executor only) - このルートを /api/projects/:id より前に定義する必要がある
+app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    // 現在のユーザー情報を取得
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    let result;
+    try {
+      // 新しいカラムが存在する場合のクエリ
+      result = await db.query(
+        `SELECT p.*, 
+                u1.name as executor_name, u1.email as executor_email,
+                u2.name as reviewer_name, u2.email as reviewer_email
+         FROM projects p
+         LEFT JOIN users u1 ON p.executor_id = u1.id
+         LEFT JOIN users u2 ON p.reviewer_id = u2.id
+         WHERE p.executor_id = $1
+         ORDER BY p.created_at DESC`,
+        [currentUser.rows[0].id]
+      );
+    } catch (queryError) {
+      // 新しいカラムが存在しない場合（マイグレーション未実行）、既存のカラムのみで取得
+      console.warn('[My Projects] New columns not found, using legacy query:', queryError.message);
+      result = await db.query(
+        `SELECT p.*, 
+                NULL as executor_name, NULL as executor_email,
+                NULL as reviewer_name, NULL as reviewer_email
+         FROM projects p
+         ORDER BY p.created_at DESC`,
+        []
+      );
+    }
+    
+    res.json({ projects: result.rows });
+  } catch (error) {
+    console.error('Error fetching my projects:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get projects for review (reviewer only) - このルートも /api/projects/:id より前に定義する必要がある
+app.get('/api/projects/review/pending', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    // 現在のユーザー情報を取得
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // 審査者であることを確認
+    if (currentUser.rows[0].position !== 'reviewer') {
+      return res.status(403).json({ error: 'Only reviewers can access this endpoint' });
+    }
+    
+    let result;
+    try {
+      // 新しいカラムが存在する場合のクエリ
+      result = await db.query(
+        `SELECT p.*, 
+                u1.name as executor_name, u1.email as executor_email,
+                u2.name as reviewer_name, u2.email as reviewer_email
+         FROM projects p
+         LEFT JOIN users u1 ON p.executor_id = u1.id
+         LEFT JOIN users u2 ON p.reviewer_id = u2.id
+         WHERE p.reviewer_id = $1 AND p.application_status = 'submitted'
+         ORDER BY p.created_at DESC`,
+        [currentUser.rows[0].id]
+      );
+    } catch (queryError) {
+      // 新しいカラムが存在しない場合（マイグレーション未実行）
+      console.warn('[Review Pending] New columns not found:', queryError.message);
+      return res.json({ projects: [] });
+    }
+    
+    res.json({ projects: result.rows });
+  } catch (error) {
+    console.error('Error fetching pending review projects:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Public endpoint - Get project by ID
 app.get('/api/projects/:id', optionalAuth, async (req, res) => {
   try {
@@ -877,74 +969,6 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
   }
 });
 
-// Get projects for review (reviewer only)
-app.get('/api/projects/review/pending', authenticateToken, requireApproved, async (req, res) => {
-  try {
-    // 現在のユーザー情報を取得
-    const currentUser = await db.query(
-      'SELECT id, position FROM users WHERE email = $1',
-      [req.user.email]
-    );
-    
-    if (currentUser.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
-    // 審査者であることを確認
-    if (currentUser.rows[0].position !== 'reviewer') {
-      return res.status(403).json({ error: 'Only reviewers can access this endpoint' });
-    }
-    
-    const result = await db.query(
-      `SELECT p.*, 
-              u1.name as executor_name, u1.email as executor_email,
-              u2.name as reviewer_name, u2.email as reviewer_email
-       FROM projects p
-       LEFT JOIN users u1 ON p.executor_id = u1.id
-       LEFT JOIN users u2 ON p.reviewer_id = u2.id
-       WHERE p.reviewer_id = $1 AND p.application_status = 'submitted'
-       ORDER BY p.created_at DESC`,
-      [currentUser.rows[0].id]
-    );
-    
-    res.json({ projects: result.rows });
-  } catch (error) {
-    console.error('Error fetching pending review projects:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Get my projects (executor only)
-app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res) => {
-  try {
-    // 現在のユーザー情報を取得
-    const currentUser = await db.query(
-      'SELECT id, position FROM users WHERE email = $1',
-      [req.user.email]
-    );
-    
-    if (currentUser.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
-    const result = await db.query(
-      `SELECT p.*, 
-              u1.name as executor_name, u1.email as executor_email,
-              u2.name as reviewer_name, u2.email as reviewer_email
-       FROM projects p
-       LEFT JOIN users u1 ON p.executor_id = u1.id
-       LEFT JOIN users u2 ON p.reviewer_id = u2.id
-       WHERE p.executor_id = $1
-       ORDER BY p.created_at DESC`,
-      [currentUser.rows[0].id]
-    );
-    
-    res.json({ projects: result.rows });
-  } catch (error) {
-    console.error('Error fetching my projects:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
 // Start server
 app.listen(PORT, () => {
