@@ -279,7 +279,6 @@ export const translations = {
     
     // Projects
     'projects.myProjects': 'マイプロジェクト',
-    'projects.newProject': '新規プロジェクト申請',
     'projects.edit': '編集',
     'projects.executor': '実行者',
     'projects.reviewer': '審査者',

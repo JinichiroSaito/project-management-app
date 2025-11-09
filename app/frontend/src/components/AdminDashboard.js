@@ -68,7 +68,7 @@ const AdminDashboard = () => {
 
   const handleApprove = async (userId) => {
     try {
-      const response = await api.post(`/api/admin/users/${userId}/approve`);
+      await api.post(`/api/admin/users/${userId}/approve`);
       setPendingUsers(pendingUsers.filter(user => user.id !== userId));
       setError('');
       setSuccessMessage(t('admin.approvedSuccess', 'User approved successfully'));

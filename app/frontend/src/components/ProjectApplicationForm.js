@@ -13,7 +13,6 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
   const [reviewers, setReviewers] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { userInfo } = useAuth();
   const { t } = useLanguage();
 
   useEffect(() => {

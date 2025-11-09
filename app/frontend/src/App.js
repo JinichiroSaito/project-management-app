@@ -11,6 +11,7 @@ import ReviewDashboard from './components/ReviewDashboard';
 function AppContentInner() {
   const { user, userInfo } = useAuth();
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showReview, setShowReview] = useState(false);
   const { t } = useLanguage();
 
   if (!user) {
@@ -69,9 +70,7 @@ function AppContentInner() {
     );
   }
 
-  const isExecutor = userInfo?.position === 'executor';
   const isReviewer = userInfo?.position === 'reviewer';
-  const [showReview, setShowReview] = useState(false);
 
   return (
     <div className="min-h-screen bg-gray-50">

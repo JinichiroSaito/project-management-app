@@ -21,6 +21,7 @@ const ProjectList = () => {
     } else {
       fetchProjects();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isExecutor]);
 
   const fetchProjects = async () => {
