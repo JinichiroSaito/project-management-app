@@ -247,6 +247,14 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
       'SELECT id, email, name, company, department, position, is_admin, is_approved, created_at FROM users ORDER BY created_at DESC'
     );
     
+    console.log(`[Admin] Fetched ${result.rows.length} total users`);
+    const pendingCount = result.rows.filter(u => !u.is_approved).length;
+    console.log(`[Admin] Pending users in all users: ${pendingCount}`);
+    const specificUser = result.rows.find(u => u.email === 'jinichirou.saitou@asahigroup-holdings.com');
+    if (specificUser) {
+      console.log(`[Admin] Found specific user:`, { id: specificUser.id, email: specificUser.email, is_approved: specificUser.is_approved });
+    }
+    
     res.json({ users: result.rows });
   } catch (error) {
     console.error('Error fetching users:', error);
