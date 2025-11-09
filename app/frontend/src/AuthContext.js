@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }) => {
   const fetchUserInfo = async (firebaseUser) => {
     if (!firebaseUser) {
       setUserInfo(null);
-      return;
+      return null;
     }
 
     try {
@@ -36,9 +36,11 @@ export const AuthProvider = ({ children }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUserInfo(response.data.user);
+      return response.data.user;
     } catch (error) {
       console.error('Error fetching user info:', error);
       setUserInfo(null);
+      return null;
     }
   };
 
@@ -58,7 +60,16 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    await fetchUserInfo(userCredential.user);
+    const userInfoData = await fetchUserInfo(userCredential.user);
+    
+    // 承認待ちの場合はログアウト
+    if (userInfoData && !userInfoData.is_approved) {
+      console.log('[Login] User is pending approval, logging out...');
+      await signOut(auth);
+      setUserInfo(null);
+      throw new Error('PENDING_APPROVAL');
+    }
+    
     return userCredential;
   };
 
@@ -72,15 +83,31 @@ export const AuthProvider = ({ children }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('[Signup] Backend registration successful:', response.data);
+      
+      // ユーザー情報を取得して承認状態を確認
+      const userInfoData = await fetchUserInfo(userCredential.user);
+      
+      // 承認待ちの場合は自動的にログアウト
+      if (userInfoData && !userInfoData.is_approved) {
+        console.log('[Signup] User is pending approval, logging out...');
+        await signOut(auth);
+        setUserInfo(null);
+        // 承認待ちであることを示すエラーをスロー（実際にはエラーではなく情報メッセージ）
+        throw new Error('PENDING_APPROVAL');
+      }
     } catch (error) {
       console.error('[Signup] Error registering user:', error);
       console.error('[Signup] Error details:', error.response?.data);
-      // 登録失敗でもFirebaseユーザーは作成されているので続行
-      // ただし、エラーを再スローして呼び出し元で処理できるようにする
+      
+      // 承認待ちの場合は特別な処理（エラーとして扱わない）
+      if (error.message === 'PENDING_APPROVAL') {
+        throw error; // 呼び出し元で特別に処理
+      }
+      
+      // その他のエラーは再スロー
       throw new Error(error.response?.data?.error || 'Failed to register user in backend');
     }
     
-    await fetchUserInfo(userCredential.user);
     return userCredential;
   };
 

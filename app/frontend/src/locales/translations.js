@@ -6,9 +6,11 @@ export const translations = {
     'signIn.password': 'Password',
     'signIn.submit': 'Sign in',
     'signIn.switchToSignup': "Don't have an account? Sign up",
+    'signIn.pendingApproval': 'Your account is pending approval. Please check your email and click the approval link to activate your account.',
     'signUp.title': 'Create your account',
     'signUp.submit': 'Sign up',
     'signUp.switchToSignin': 'Already have an account? Sign in',
+    'signUp.pendingApproval': 'Registration successful! Please check your email and click the approval link to activate your account.',
     
     // Header
     'header.title': 'Project Management',
@@ -103,9 +105,11 @@ export const translations = {
     'signIn.password': 'パスワード',
     'signIn.submit': 'サインイン',
     'signIn.switchToSignup': 'アカウントをお持ちでない場合、サインアップ',
+    'signIn.pendingApproval': 'アカウントは承認待ちです。メールを確認して、承認リンクをクリックしてアカウントを有効化してください。',
     'signUp.title': 'アカウントを作成',
     'signUp.submit': 'サインアップ',
     'signUp.switchToSignin': '既にアカウントをお持ちの場合、サインイン',
+    'signUp.pendingApproval': '登録が完了しました！メールを確認して、承認リンクをクリックしてアカウントを有効化してください。',
     
     // Header
     'header.title': 'プロジェクト管理',
