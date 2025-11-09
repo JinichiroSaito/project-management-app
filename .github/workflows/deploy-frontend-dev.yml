@@ -67,11 +67,28 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image=${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            --region=${{ env.REGION }} \
-            --platform=managed \
-            --allow-unauthenticated \
-            --port=8080 \
-            --quiet
+          # リトライロジック付きでデプロイ
+          max_retries=3
+          retry_count=0
+          while [ $retry_count -lt $max_retries ]; do
+            if gcloud run deploy ${{ env.SERVICE_NAME }} \
+              --image=${{ env.IMAGE_NAME }}:dev-latest \
+              --region=${{ env.REGION }} \
+              --platform=managed \
+              --allow-unauthenticated \
+              --port=8080 \
+              --quiet; then
+              echo "Deployment successful"
+              exit 0
+            else
+              retry_count=$((retry_count + 1))
+              if [ $retry_count -lt $max_retries ]; then
+                echo "Deployment failed, retrying in 10 seconds... (attempt $retry_count/$max_retries)"
+                sleep 10
+              else
+                echo "Deployment failed after $max_retries attempts"
+                exit 1
+              fi
+            fi
+          done
 
