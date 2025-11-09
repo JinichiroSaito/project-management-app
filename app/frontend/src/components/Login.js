@@ -69,8 +69,8 @@ const Login = () => {
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
-            <div className="rounded-md bg-red-50 p-4">
-              <p className="text-sm text-red-800">{error}</p>
+            <div className="rounded-md bg-yellow-50 p-4 border border-yellow-200">
+              <p className="text-sm text-yellow-800">{error}</p>
             </div>
           )}
           <div className="rounded-md shadow-sm -space-y-px">

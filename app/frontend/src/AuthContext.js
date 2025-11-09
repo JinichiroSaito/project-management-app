@@ -89,9 +89,13 @@ export const AuthProvider = ({ children }) => {
       
       // 承認待ちの場合は自動的にログアウト
       if (userInfoData && !userInfoData.is_approved) {
-        console.log('[Signup] User is pending approval, logging out...');
-        await signOut(auth);
-        setUserInfo(null);
+        console.log('[Signup] User is pending approval, will logout after error message is shown...');
+        // エラーメッセージを表示するために、少し待ってからログアウト
+        // エラーを先にスローして、エラーメッセージが表示された後にログアウト
+        setTimeout(async () => {
+          await signOut(auth);
+          setUserInfo(null);
+        }, 2000); // 2秒待ってからログアウト（エラーメッセージを表示する時間を確保）
         // 承認待ちであることを示すエラーをスロー（実際にはエラーではなく情報メッセージ）
         throw new Error('PENDING_APPROVAL');
       }
