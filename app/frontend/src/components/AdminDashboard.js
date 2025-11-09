@@ -4,14 +4,20 @@ import { useLanguage } from '../LanguageContext';
 
 const AdminDashboard = () => {
   const [pendingUsers, setPendingUsers] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'all'
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const { t } = useLanguage();
 
   useEffect(() => {
-    fetchPendingUsers();
-  }, []);
+    if (activeTab === 'pending') {
+      fetchPendingUsers();
+    } else {
+      fetchAllUsers();
+    }
+  }, [activeTab]);
 
   const fetchPendingUsers = async () => {
     try {
@@ -27,6 +33,20 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchAllUsers = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get('/api/admin/users');
+      setAllUsers(response.data.users);
+      setError('');
+    } catch (error) {
+      console.error('Error fetching all users:', error);
+      setError(error.response?.data?.error || 'Failed to fetch users');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleApprove = async (userId) => {
     try {
       const response = await api.post(`/api/admin/users/${userId}/approve`);
@@ -35,6 +55,9 @@ const AdminDashboard = () => {
       setSuccessMessage(t('admin.approvedSuccess', 'User approved successfully'));
       setTimeout(() => setSuccessMessage(''), 3000);
       fetchPendingUsers(); // リストを更新
+      if (activeTab === 'all') {
+        fetchAllUsers(); // 全ユーザーリストも更新
+      }
     } catch (error) {
       console.error('Error approving user:', error);
       setError(error.response?.data?.error || 'Failed to approve user');
@@ -50,10 +73,16 @@ const AdminDashboard = () => {
     try {
       await api.delete(`/api/admin/users/${userId}`);
       setPendingUsers(pendingUsers.filter(user => user.id !== userId));
+      setAllUsers(allUsers.filter(user => user.id !== userId));
       setError('');
       setSuccessMessage(t('admin.deletedSuccess', 'User deleted successfully'));
       setTimeout(() => setSuccessMessage(''), 3000);
-      fetchPendingUsers(); // リストを更新
+      // リストを更新
+      if (activeTab === 'pending') {
+        fetchPendingUsers();
+      } else {
+        fetchAllUsers();
+      }
     } catch (error) {
       console.error('Error deleting user:', error);
       setError(error.response?.data?.error || 'Failed to delete user');
@@ -68,6 +97,9 @@ const AdminDashboard = () => {
     );
   }
 
+  const currentUsers = activeTab === 'pending' ? pendingUsers : allUsers;
+  const isPendingTab = activeTab === 'pending';
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
@@ -77,6 +109,32 @@ const AdminDashboard = () => {
         <p className="mt-2 text-sm text-gray-600">
           {t('admin.subtitle', 'Approve pending user registrations from the list below')}
         </p>
+      </div>
+
+      {/* タブ切り替え */}
+      <div className="mb-4 border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'pending'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            {t('admin.tab.pending', 'Pending Approval')} ({pendingUsers.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'all'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            {t('admin.tab.all', 'All Users')} ({allUsers.length})
+          </button>
+        </nav>
       </div>
 
       {error && (
@@ -91,10 +149,16 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {pendingUsers.length === 0 ? (
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="text-gray-600">{t('projects.loading')}</div>
+        </div>
+      ) : currentUsers.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-500">
-            {t('admin.noPendingUsers', 'No pending user approvals')}
+            {isPendingTab 
+              ? t('admin.noPendingUsers', 'No pending user approvals')
+              : t('admin.noUsers', 'No users found')}
           </p>
         </div>
       ) : (
@@ -117,6 +181,11 @@ const AdminDashboard = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   {t('admin.position', 'Position')}
                 </th>
+                {!isPendingTab && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    {t('admin.status', 'Status')}
+                  </th>
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   {t('admin.createdAt', 'Created At')}
                 </th>
@@ -126,7 +195,7 @@ const AdminDashboard = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {pendingUsers.map((user) => (
+              {currentUsers.map((user) => (
                 <tr key={user.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {user.email}
@@ -147,17 +216,37 @@ const AdminDashboard = () => {
                       ? t('profile.position.reviewer', 'Project Reviewer')
                       : user.position || '-'}
                   </td>
+                  {!isPendingTab && (
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        user.is_approved 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {user.is_approved 
+                          ? t('admin.status.approved', 'Approved')
+                          : t('admin.status.pending', 'Pending')}
+                      </span>
+                      {user.is_admin && (
+                        <span className="ml-2 px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                          {t('admin.status.admin', 'Admin')}
+                        </span>
+                      )}
+                    </td>
+                  )}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(user.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex space-x-2">
-                      <button
-                        onClick={() => handleApprove(user.id)}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-                      >
-                        {t('admin.approve', 'Approve')}
-                      </button>
+                      {!user.is_approved && (
+                        <button
+                          onClick={() => handleApprove(user.id)}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+                        >
+                          {t('admin.approve', 'Approve')}
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDelete(user.id, user.email)}
                         className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium"
