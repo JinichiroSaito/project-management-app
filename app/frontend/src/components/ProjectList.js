@@ -11,6 +11,7 @@ const ProjectList = () => {
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
+  const [selectedProjectForKpi, setSelectedProjectForKpi] = useState(null);
   const { user, userInfo } = useAuth();
   const { t } = useLanguage();
   
@@ -180,21 +181,36 @@ const ProjectList = () => {
               {t('projects.created')}: {new Date(project.created_at).toLocaleDateString()}
             </div>
             {isExecutor && project.executor_id === userInfo?.id && (
-              <div className="mt-4 flex space-x-2">
-                {project.application_status === 'draft' && (
+              <div className="mt-4 flex flex-col space-y-2">
+                <div className="flex space-x-2">
+                  {project.application_status === 'draft' && (
+                    <button
+                      onClick={() => setEditingProject(project)}
+                      className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
+                    >
+                      {t('projects.edit', 'Edit')}
+                    </button>
+                  )}
+                  {project.application_status === 'approved' && project.requested_amount && parseFloat(project.requested_amount) >= 500000000 && (
+                    <button
+                      onClick={() => setSelectedProjectForKpi(selectedProjectForKpi?.id === project.id ? null : project)}
+                      className="text-green-600 hover:text-green-700 text-sm font-medium"
+                    >
+                      {selectedProjectForKpi?.id === project.id ? t('kpi.hideReports', 'Hide KPI Reports') : t('kpi.showReports', 'Manage KPI Reports')}
+                    </button>
+                  )}
                   <button
-                    onClick={() => setEditingProject(project)}
-                    className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
+                    onClick={() => handleDeleteProject(project.id)}
+                    className="text-red-600 hover:text-red-700 text-sm font-medium"
                   >
-                    {t('projects.edit', 'Edit')}
+                    {t('projects.delete', 'Delete')}
                   </button>
+                </div>
+                {selectedProjectForKpi?.id === project.id && (
+                  <div className="mt-4 border-t pt-4">
+                    <ProjectKpiReports project={selectedProjectForKpi} />
+                  </div>
                 )}
-                <button
-                  onClick={() => handleDeleteProject(project.id)}
-                  className="text-red-600 hover:text-red-700 text-sm font-medium"
-                >
-                  {t('projects.delete', 'Delete')}
-                </button>
               </div>
             )}
           </div>
