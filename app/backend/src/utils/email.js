@@ -7,8 +7,14 @@ const createTransporter = () => {
     const emailUser = process.env.EMAIL_USER;
     const emailPassword = process.env.EMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD;
     
+    console.log('[Email] Checking email configuration:', {
+      EMAIL_SERVICE: process.env.EMAIL_SERVICE,
+      EMAIL_USER: emailUser ? `${emailUser.substring(0, 3)}***` : 'NOT SET',
+      EMAIL_APP_PASSWORD: emailPassword ? 'SET' : 'NOT SET'
+    });
+    
     if (!emailUser || !emailPassword) {
-      console.warn('EMAIL_USER or EMAIL_APP_PASSWORD not set. Email sending will be disabled.');
+      console.warn('[Email] EMAIL_USER or EMAIL_APP_PASSWORD not set. Email sending will be disabled.');
       return {
         sendMail: async (options) => {
           console.log('📧 Email (disabled - credentials not set):', {
@@ -20,13 +26,24 @@ const createTransporter = () => {
       };
     }
     
-    return nodemailer.createTransport({
+    const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
         user: emailUser,
         pass: emailPassword
       }
     });
+    
+    // 接続テスト（オプション）
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error('[Email] Transporter verification failed:', error);
+      } else {
+        console.log('[Email] Transporter verified successfully');
+      }
+    });
+    
+    return transporter;
   }
   
   // カスタムSMTPサーバーを使用する場合
@@ -155,10 +172,18 @@ ${appUrl}
   };
   
   try {
-    await transporter.sendMail(mailOptions);
-    console.log(`✓ Registration confirmation email sent to ${userEmail}`);
+    console.log(`[Email] Attempting to send registration confirmation email to: ${userEmail}`);
+    const result = await transporter.sendMail(mailOptions);
+    console.log(`✓ Registration confirmation email sent to ${userEmail}`, { messageId: result.messageId });
+    return result;
   } catch (error) {
-    console.error('Failed to send registration confirmation email:', error);
+    console.error('[Email] Failed to send registration confirmation email:', error);
+    console.error('[Email] Error details:', {
+      code: error.code,
+      command: error.command,
+      response: error.response,
+      responseCode: error.responseCode
+    });
     throw error;
   }
 }
