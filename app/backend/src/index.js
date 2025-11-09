@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('./db');
+const admin = require('firebase-admin');
 const { authenticateToken, optionalAuth, requireAdmin, requireApproved, initializeFirebase } = require('./middleware/auth');
 const { sendApprovalRequestEmail, sendApprovalNotificationEmail } = require('./utils/email');
 
@@ -268,6 +269,12 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
 // Admin: Get pending approval users
 app.get('/api/admin/users/pending', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    // まず、すべてのユーザーを取得してデバッグ
+    const allUsers = await db.query('SELECT id, email, is_approved FROM users');
+    console.log(`[Admin] Total users in database: ${allUsers.rows.length}`);
+    console.log('[Admin] All users:', allUsers.rows.map(u => ({ id: u.id, email: u.email, is_approved: u.is_approved })));
+    
+    // 承認待ちユーザーを取得
     const result = await db.query(
       'SELECT id, email, name, company, department, position, is_approved, created_at FROM users WHERE is_approved = FALSE ORDER BY created_at DESC'
     );
@@ -275,9 +282,22 @@ app.get('/api/admin/users/pending', authenticateToken, requireAdmin, async (req,
     console.log(`[Admin] Fetched ${result.rows.length} pending users`);
     console.log('[Admin] Pending users:', result.rows.map(u => ({ id: u.id, email: u.email, is_approved: u.is_approved })));
     
+    // 特定のユーザーを確認
+    const specificUser = result.rows.find(u => u.email === 'jinichirou.saitou@asahigroup-holdings.com');
+    if (specificUser) {
+      console.log(`[Admin] Found specific user in pending:`, specificUser);
+    } else {
+      const allSpecificUser = allUsers.rows.find(u => u.email === 'jinichirou.saitou@asahigroup-holdings.com');
+      if (allSpecificUser) {
+        console.log(`[Admin] Specific user exists but is_approved=${allSpecificUser.is_approved}:`, allSpecificUser);
+      } else {
+        console.log(`[Admin] Specific user not found in database at all`);
+      }
+    }
+    
     res.json({ users: result.rows });
   } catch (error) {
-    console.error('Error fetching pending users:', error);
+    console.error('[Admin] Error fetching pending users:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -367,21 +387,44 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, 
       return res.status(400).json({ error: 'Cannot delete your own account' });
     }
     
+    // 削除するユーザー情報を取得（Firebase UIDが必要）
+    const userToDelete = await db.query(
+      'SELECT firebase_uid, email FROM users WHERE id = $1',
+      [id]
+    );
+    
+    if (userToDelete.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const { firebase_uid, email } = userToDelete.rows[0];
+    
+    // データベースから削除
     const result = await db.query(
       'DELETE FROM users WHERE id = $1 RETURNING *',
       [id]
     );
     
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+    // Firebase Authenticationからも削除
+    try {
+      const app = initializeFirebase();
+      if (app && firebase_uid && firebase_uid !== 'admin-initial') {
+        await admin.auth().deleteUser(firebase_uid);
+        console.log(`[Delete] Firebase user deleted: ${email} (${firebase_uid})`);
+      }
+    } catch (firebaseError) {
+      console.error(`[Delete] Failed to delete Firebase user ${email}:`, firebaseError);
+      // Firebase削除失敗でもデータベース削除は成功とする
     }
+    
+    console.log(`[Delete] User deleted from database: ${email} (id: ${id})`);
     
     res.json({
       message: 'User deleted successfully',
       deletedUser: result.rows[0]
     });
   } catch (error) {
-    console.error('Error deleting user:', error);
+    console.error('[Delete] Error deleting user:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
