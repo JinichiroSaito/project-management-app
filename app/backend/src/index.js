@@ -58,7 +58,13 @@ app.get('/health/db', async (req, res) => {
 app.get('/api/projects', optionalAuth, async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT * FROM projects ORDER BY created_at DESC'
+      `SELECT p.*, 
+              u1.name as executor_name, u1.email as executor_email,
+              u2.name as reviewer_name, u2.email as reviewer_email
+       FROM projects p
+       LEFT JOIN users u1 ON p.executor_id = u1.id
+       LEFT JOIN users u2 ON p.reviewer_id = u2.id
+       ORDER BY p.created_at DESC`
     );
     res.json({ 
       projects: result.rows,
@@ -75,7 +81,13 @@ app.get('/api/projects/:id', optionalAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await db.query(
-      'SELECT * FROM projects WHERE id = $1',
+      `SELECT p.*, 
+              u1.name as executor_name, u1.email as executor_email,
+              u2.name as reviewer_name, u2.email as reviewer_email
+       FROM projects p
+       LEFT JOIN users u1 ON p.executor_id = u1.id
+       LEFT JOIN users u2 ON p.reviewer_id = u2.id
+       WHERE p.id = $1`,
       [id]
     );
     
@@ -90,18 +102,55 @@ app.get('/api/projects/:id', optionalAuth, async (req, res) => {
   }
 });
 
-// Protected endpoint - Create new project
+// Protected endpoint - Create new project (application)
 app.post('/api/projects', authenticateToken, requireApproved, async (req, res) => {
   try {
-    const { name, description, status } = req.body;
+    const { name, description, requested_amount, reviewer_id } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
     }
     
+    if (!requested_amount || requested_amount <= 0) {
+      return res.status(400).json({ error: 'Requested amount is required and must be greater than 0' });
+    }
+    
+    // 現在のユーザー情報を取得（実行者として設定）
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const executorId = currentUser.rows[0].id;
+    
+    // 実行者はプロジェクト実行者（executor）である必要がある
+    if (currentUser.rows[0].position !== 'executor') {
+      return res.status(403).json({ error: 'Only project executors can create project applications' });
+    }
+    
+    // 審査者IDが指定されている場合、プロジェクト審査者（reviewer）であることを確認
+    if (reviewer_id) {
+      const reviewer = await db.query(
+        'SELECT id, position FROM users WHERE id = $1',
+        [reviewer_id]
+      );
+      
+      if (reviewer.rows.length === 0) {
+        return res.status(404).json({ error: 'Reviewer not found' });
+      }
+      
+      if (reviewer.rows[0].position !== 'reviewer') {
+        return res.status(400).json({ error: 'Reviewer must be a project reviewer' });
+      }
+    }
+    
     const result = await db.query(
-      'INSERT INTO projects (name, description, status) VALUES ($1, $2, $3) RETURNING *',
-      [name, description || '', status || 'planning']
+      'INSERT INTO projects (name, description, status, executor_id, reviewer_id, requested_amount, application_status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [name, description || '', 'planning', executorId, reviewer_id || null, requested_amount, 'draft']
     );
     
     res.status(201).json({
@@ -114,15 +163,79 @@ app.post('/api/projects', authenticateToken, requireApproved, async (req, res) =
   }
 });
 
-// Protected endpoint - Update project
+// Protected endpoint - Update project (application)
 app.put('/api/projects/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, status } = req.body;
+    const { name, description, status, requested_amount, reviewer_id, application_status } = req.body;
+    
+    // プロジェクトの所有者を確認
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const project = await db.query(
+      'SELECT executor_id, reviewer_id, application_status FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const projectData = project.rows[0];
+    const isExecutor = projectData.executor_id === currentUser.rows[0].id;
+    const isReviewer = projectData.reviewer_id === currentUser.rows[0].id;
+    const isAdmin = currentUser.rows[0].position === 'admin' || (await db.query('SELECT is_admin FROM users WHERE id = $1', [currentUser.rows[0].id])).rows[0]?.is_admin;
+    
+    // 実行者は申請の編集が可能（draft状態のみ）
+    // 審査者は審査のみ可能
+    if (!isExecutor && !isReviewer && !isAdmin) {
+      return res.status(403).json({ error: 'You do not have permission to update this project' });
+    }
+    
+    // 実行者は申請の提出まで可能
+    if (isExecutor && application_status && application_status !== 'draft' && application_status !== 'submitted') {
+      return res.status(403).json({ error: 'Executors can only submit applications, not change status after submission' });
+    }
+    
+    // 審査者は審査のみ可能
+    if (isReviewer && application_status && !['approved', 'rejected'].includes(application_status)) {
+      return res.status(403).json({ error: 'Reviewers can only approve or reject applications' });
+    }
+    
+    // 審査者IDが指定されている場合、プロジェクト審査者であることを確認
+    if (reviewer_id) {
+      const reviewer = await db.query(
+        'SELECT id, position FROM users WHERE id = $1',
+        [reviewer_id]
+      );
+      
+      if (reviewer.rows.length === 0) {
+        return res.status(404).json({ error: 'Reviewer not found' });
+      }
+      
+      if (reviewer.rows[0].position !== 'reviewer') {
+        return res.status(400).json({ error: 'Reviewer must be a project reviewer' });
+      }
+    }
     
     const result = await db.query(
-      'UPDATE projects SET name = COALESCE($1, name), description = COALESCE($2, description), status = COALESCE($3, status), updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
-      [name, description, status, id]
+      `UPDATE projects 
+       SET name = COALESCE($1, name), 
+           description = COALESCE($2, description), 
+           status = COALESCE($3, status),
+           requested_amount = COALESCE($4, requested_amount),
+           reviewer_id = COALESCE($5, reviewer_id),
+           application_status = COALESCE($6, application_status),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $7 RETURNING *`,
+      [name, description, status, requested_amount, reviewer_id, application_status, id]
     );
     
     if (result.rows.length === 0) {

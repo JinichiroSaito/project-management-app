@@ -2,23 +2,26 @@ import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { useAuth } from '../AuthContext';
 import { useLanguage } from '../LanguageContext';
+import ProjectApplicationForm from './ProjectApplicationForm';
 
 const ProjectList = () => {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [newProject, setNewProject] = useState({
-    name: '',
-    description: '',
-    status: 'planning'
-  });
-  const { user } = useAuth();
+  const [editingProject, setEditingProject] = useState(null);
+  const { user, userInfo } = useAuth();
   const { t } = useLanguage();
+  
+  const isExecutor = userInfo?.position === 'executor';
 
   useEffect(() => {
-    fetchProjects();
-  }, []);
+    if (isExecutor) {
+      fetchMyProjects();
+    } else {
+      fetchProjects();
+    }
+  }, [isExecutor]);
 
   const fetchProjects = async () => {
     try {
@@ -31,15 +34,24 @@ const ProjectList = () => {
     }
   };
 
-  const handleCreateProject = async (e) => {
-    e.preventDefault();
+  const fetchMyProjects = async () => {
     try {
-      await api.post('/api/projects', newProject);
-      setNewProject({ name: '', description: '', status: 'planning' });
-      setShowForm(false);
-      fetchProjects();
+      const response = await api.get('/api/projects/my');
+      setProjects(response.data.projects);
+      setLoading(false);
     } catch (error) {
-      setError(t('projects.error.create'));
+      setError(t('projects.error.fetch'));
+      setLoading(false);
+    }
+  };
+
+  const handleFormComplete = () => {
+    setShowForm(false);
+    setEditingProject(null);
+    if (isExecutor) {
+      fetchMyProjects();
+    } else {
+      fetchProjects();
     }
   };
 
@@ -93,50 +105,15 @@ const ProjectList = () => {
         </div>
       )}
 
-      {showForm && (
-        <div className="mb-6 bg-white shadow rounded-lg p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">{t('projects.createNew')}</h3>
-          <form onSubmit={handleCreateProject} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('projects.name')}</label>
-              <input
-                type="text"
-                required
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-                value={newProject.name}
-                onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('projects.description')}</label>
-              <textarea
-                rows="3"
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-                value={newProject.description}
-                onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('projects.status')}</label>
-              <select
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-                value={newProject.status}
-                onChange={(e) => setNewProject({ ...newProject, status: e.target.value })}
-              >
-                <option value="planning">{t('projects.status.planning')}</option>
-                <option value="active">{t('projects.status.active')}</option>
-                <option value="completed">{t('projects.status.completed')}</option>
-                <option value="on_hold">{t('projects.status.on_hold')}</option>
-              </select>
-            </div>
-            <button
-              type="submit"
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-            >
-              {t('projects.create')}
-            </button>
-          </form>
-        </div>
+      {(showForm || editingProject) && isExecutor && (
+        <ProjectApplicationForm
+          project={editingProject}
+          onComplete={handleFormComplete}
+          onCancel={() => {
+            setShowForm(false);
+            setEditingProject(null);
+          }}
+        />
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -144,21 +121,60 @@ const ProjectList = () => {
           <div key={project.id} className="bg-white shadow rounded-lg p-6">
             <div className="flex justify-between items-start mb-2">
               <h3 className="text-lg font-medium text-gray-900">{project.name}</h3>
-              <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(project.status)}`}>
-                {t(`projects.status.${project.status}`)}
-              </span>
+              <div className="flex flex-col items-end space-y-1">
+                <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(project.status)}`}>
+                  {t(`projects.status.${project.status}`)}
+                </span>
+                {project.application_status && (
+                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                    project.application_status === 'approved' ? 'bg-green-100 text-green-800' :
+                    project.application_status === 'rejected' ? 'bg-red-100 text-red-800' :
+                    project.application_status === 'submitted' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {project.application_status === 'draft' && t('projects.applicationStatus.draft', 'Draft')}
+                    {project.application_status === 'submitted' && t('projects.applicationStatus.submitted', 'Submitted')}
+                    {project.application_status === 'approved' && t('projects.applicationStatus.approved', 'Approved')}
+                    {project.application_status === 'rejected' && t('projects.applicationStatus.rejected', 'Rejected')}
+                  </span>
+                )}
+              </div>
             </div>
             <p className="text-sm text-gray-600 mb-4">{project.description}</p>
+            {project.requested_amount && (
+              <div className="text-sm text-gray-700 mb-2">
+                <span className="font-medium">{t('projects.requestedAmount', 'Requested Amount')}: </span>
+                {new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(project.requested_amount)}
+              </div>
+            )}
+            {project.executor_name && (
+              <div className="text-xs text-gray-500 mb-1">
+                {t('projects.executor', 'Executor')}: {project.executor_name}
+              </div>
+            )}
+            {project.reviewer_name && (
+              <div className="text-xs text-gray-500 mb-1">
+                {t('projects.reviewer', 'Reviewer')}: {project.reviewer_name}
+              </div>
+            )}
             <div className="text-xs text-gray-500">
               {t('projects.created')}: {new Date(project.created_at).toLocaleDateString()}
             </div>
-            {user && (
+            {isExecutor && project.executor_id === userInfo?.id && (
               <div className="mt-4 flex space-x-2">
+                {project.application_status === 'draft' && (
+                  <button
+                    onClick={() => setEditingProject(project)}
+                    className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
+                  >
+                    {t('projects.edit', 'Edit')}
+                  </button>
+                )}
                 <button
                   onClick={() => handleDeleteProject(project.id)}
                   className="text-red-600 hover:text-red-700 text-sm font-medium"
                 >
-                  {t('projects.delete')}
+                  {t('projects.delete', 'Delete')}
                 </button>
               </div>
             )}

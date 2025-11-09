@@ -6,6 +6,7 @@ import Header from './components/Header';
 import ProjectList from './components/ProjectList';
 import AdminDashboard from './components/AdminDashboard';
 import ProfileForm from './components/ProfileForm';
+import ReviewDashboard from './components/ReviewDashboard';
 
 function AppContentInner() {
   const { user, userInfo } = useAuth();
@@ -68,27 +69,47 @@ function AppContentInner() {
     );
   }
 
+  const isExecutor = userInfo?.position === 'executor';
+  const isReviewer = userInfo?.position === 'reviewer';
+  const [showReview, setShowReview] = useState(false);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
-      {userInfo?.is_admin && (
+      {(userInfo?.is_admin || isReviewer) && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex space-x-4">
-            <button
-              onClick={() => setShowAdmin(!showAdmin)}
-              className={`px-4 py-2 rounded-md text-sm font-medium ${
-                showAdmin
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              {showAdmin ? t('admin.hideDashboard', 'Hide Admin Dashboard') : t('admin.showDashboard', 'Show Admin Dashboard')}
-            </button>
+            {userInfo?.is_admin && (
+              <button
+                onClick={() => setShowAdmin(!showAdmin)}
+                className={`px-4 py-2 rounded-md text-sm font-medium ${
+                  showAdmin
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {showAdmin ? t('admin.hideDashboard', 'Hide Admin Dashboard') : t('admin.showDashboard', 'Show Admin Dashboard')}
+              </button>
+            )}
+            {isReviewer && (
+              <button
+                onClick={() => setShowReview(!showReview)}
+                className={`px-4 py-2 rounded-md text-sm font-medium ${
+                  showReview
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {showReview ? t('review.hideDashboard', 'Hide Review Dashboard') : t('review.showDashboard', 'Show Review Dashboard')}
+              </button>
+            )}
           </div>
         </div>
       )}
       {showAdmin && userInfo?.is_admin ? (
         <AdminDashboard />
+      ) : showReview && isReviewer ? (
+        <ReviewDashboard />
       ) : (
         <ProjectList />
       )}
