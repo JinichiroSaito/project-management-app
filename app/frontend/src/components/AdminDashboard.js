@@ -89,14 +89,6 @@ const AdminDashboard = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="text-gray-600">{t('projects.loading')}</div>
-      </div>
-    );
-  }
-
   const currentUsers = activeTab === 'pending' ? pendingUsers : allUsers;
   const isPendingTab = activeTab === 'pending';
 
