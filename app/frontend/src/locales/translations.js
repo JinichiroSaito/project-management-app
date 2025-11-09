@@ -72,6 +72,7 @@ export const translations = {
     // Approval
     'approval.pending': 'Account Pending Approval',
     'approval.message': 'Your account is pending approval. Please wait for an administrator to approve your registration.',
+    'approval.profileRequired': 'Please complete your profile below. Once your profile is submitted, an approval request will be sent to the administrator.',
     
     // Profile
     'profile.title': 'Complete Your Profile',
@@ -159,6 +160,7 @@ export const translations = {
     // Approval
     'approval.pending': 'アカウント承認待ち',
     'approval.message': 'アカウントが承認待ちです。管理者による承認をお待ちください。',
+    'approval.profileRequired': '以下のプロフィール情報を入力してください。プロフィールを送信すると、管理者に承認依頼が送信されます。',
     
     // Profile
     'profile.title': 'プロフィールを完成させてください',

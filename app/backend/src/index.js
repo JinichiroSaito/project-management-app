@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('./db');
 const admin = require('firebase-admin');
 const { authenticateToken, optionalAuth, requireAdmin, requireApproved, initializeFirebase } = require('./middleware/auth');
-const { sendApprovalRequestEmail, sendApprovalNotificationEmail } = require('./utils/email');
+const { sendApprovalRequestEmail, sendApprovalNotificationEmail, sendRegistrationConfirmationEmail } = require('./utils/email');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -224,14 +224,16 @@ app.post('/api/users/register', authenticateToken, async (req, res) => {
     const newUser = result.rows[0];
     console.log(`[Register] New user created:`, { id: newUser.id, email: newUser.email, is_approved: newUser.is_approved, firebase_uid: newUser.firebase_uid });
     
-    // 管理者に承認依頼メールを送信（通知のみ、承認は管理者ページで行う）
+    // ユーザーに登録確認メールを送信
     try {
-      await sendApprovalRequestEmail(email, null);
-      console.log(`[Register] Approval request email sent for: ${email}`);
+      await sendRegistrationConfirmationEmail(email);
+      console.log(`[Register] Registration confirmation email sent to: ${email}`);
     } catch (emailError) {
-      console.error('[Register] Failed to send approval request email:', emailError);
+      console.error('[Register] Failed to send registration confirmation email:', emailError);
       // メール送信失敗でもユーザー登録は成功とする
     }
+    
+    // 注意: 管理者への承認依頼メールは、プロフィール情報が入力された後に送信される
     
     res.status(201).json({
       user: newUser,
@@ -357,7 +359,7 @@ app.post('/api/admin/users/:id/approve', authenticateToken, requireAdmin, async 
     
     // ユーザーに承認通知メールを送信
     try {
-      await sendApprovalNotificationEmail(user.email);
+      await sendApprovalNotificationEmail(user.email, user.name);
     } catch (emailError) {
       console.error('Failed to send approval notification email:', emailError);
     }
@@ -429,8 +431,8 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, 
   }
 });
 
-// Update user profile
-app.put('/api/users/profile', authenticateToken, requireApproved, async (req, res) => {
+// Update user profile (承認待ちユーザーもプロフィールを入力できるように requireApproved を削除)
+app.put('/api/users/profile', authenticateToken, async (req, res) => {
   try {
     const { name, company, department, position } = req.body;
     
@@ -440,19 +442,40 @@ app.put('/api/users/profile', authenticateToken, requireApproved, async (req, re
       });
     }
     
+    // 現在のユーザー情報を取得（プロフィール入力前かどうかを確認）
+    const currentUser = await db.query(
+      'SELECT name, company, department, position, is_approved FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const wasProfileEmpty = !currentUser.rows[0].name || !currentUser.rows[0].company;
+    const isPending = !currentUser.rows[0].is_approved;
+    
+    // プロフィール情報を更新
     const result = await db.query(
       'UPDATE users SET name = $1, company = $2, department = $3, position = $4, updated_at = CURRENT_TIMESTAMP WHERE email = $5 RETURNING *',
       [name, company, department, position, req.user.email]
     );
     
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+    // プロフィール情報が初めて入力され、かつ承認待ちの場合、管理者に承認依頼メールを送信
+    if (wasProfileEmpty && isPending) {
+      try {
+        await sendApprovalRequestEmail(req.user.email, name, company, department, position);
+        console.log(`[Profile] Approval request email sent to admin for: ${req.user.email}`);
+      } catch (emailError) {
+        console.error('[Profile] Failed to send approval request email:', emailError);
+        // メール送信失敗でもプロフィール更新は成功とする
+      }
     }
     
-    res.json({
+  res.json({
       user: result.rows[0],
       message: 'Profile updated successfully'
-    });
+  });
   } catch (error) {
     console.error('Error updating profile:', error);
     res.status(500).json({ error: 'Internal server error' });

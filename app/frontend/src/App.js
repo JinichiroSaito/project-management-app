@@ -16,7 +16,30 @@ function AppContentInner() {
     return <Login />;
   }
 
-  // 承認待ち状態
+  // 承認待ち状態でプロフィール未入力の場合
+  if (userInfo && !userInfo.is_approved && userInfo.needsProfile) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
+            <h2 className="text-xl font-bold text-yellow-800 mb-2">
+              {t('approval.pending', 'Account Pending Approval')}
+            </h2>
+            <p className="text-yellow-700">
+              {t('approval.message', 'Your account is pending approval. Please wait for an administrator to approve your registration.')}
+            </p>
+            <p className="text-yellow-700 mt-2">
+              {t('approval.profileRequired', 'Please complete your profile below. Once your profile is submitted, an approval request will be sent to the administrator.')}
+            </p>
+          </div>
+        </div>
+        <ProfileForm onComplete={() => window.location.reload()} />
+      </div>
+    );
+  }
+
+  // 承認待ち状態（プロフィール入力済み）
   if (userInfo && !userInfo.is_approved) {
     return (
       <div className="min-h-screen bg-gray-50">
