@@ -282,9 +282,9 @@ app.get('/api/admin/users/pending', authenticateToken, requireAdmin, async (req,
     console.log(`[Admin] Total users in database: ${allUsers.rows.length}`);
     console.log('[Admin] All users:', allUsers.rows.map(u => ({ id: u.id, email: u.email, is_approved: u.is_approved })));
     
-    // 承認待ちユーザーを取得
+    // 承認待ちユーザーを取得（プロフィール情報が入力されているもののみ）
     const result = await db.query(
-      'SELECT id, email, name, company, department, position, is_approved, created_at FROM users WHERE is_approved = FALSE ORDER BY created_at DESC'
+      'SELECT id, email, name, company, department, position, is_approved, created_at FROM users WHERE is_approved = FALSE AND name IS NOT NULL AND company IS NOT NULL AND department IS NOT NULL AND position IS NOT NULL ORDER BY created_at DESC'
     );
     
     console.log(`[Admin] Fetched ${result.rows.length} pending users`);
