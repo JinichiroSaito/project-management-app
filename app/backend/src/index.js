@@ -206,6 +206,7 @@ app.post('/api/users/register', authenticateToken, async (req, res) => {
     );
     
     if (existingUser.rows.length > 0) {
+      console.log(`[Register] User already exists:`, { id: existingUser.rows[0].id, email: existingUser.rows[0].email, is_approved: existingUser.rows[0].is_approved });
       return res.json({
         user: existingUser.rows[0],
         message: 'User already exists'
@@ -219,6 +220,7 @@ app.post('/api/users/register', authenticateToken, async (req, res) => {
     );
     
     const newUser = result.rows[0];
+    console.log(`[Register] New user created:`, { id: newUser.id, email: newUser.email, is_approved: newUser.is_approved });
     
     // 管理者に承認依頼メールを送信（通知のみ、承認は管理者ページで行う）
     try {
@@ -256,8 +258,11 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
 app.get('/api/admin/users/pending', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT id, email, name, company, department, position, created_at FROM users WHERE is_approved = FALSE ORDER BY created_at DESC'
+      'SELECT id, email, name, company, department, position, is_approved, created_at FROM users WHERE is_approved = FALSE ORDER BY created_at DESC'
     );
+    
+    console.log(`[Admin] Fetched ${result.rows.length} pending users`);
+    console.log('[Admin] Pending users:', result.rows.map(u => ({ id: u.id, email: u.email, is_approved: u.is_approved })));
     
     res.json({ users: result.rows });
   } catch (error) {
