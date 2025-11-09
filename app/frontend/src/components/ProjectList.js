@@ -65,7 +65,12 @@ const ProjectList = () => {
     }
     try {
       await api.delete(`/api/projects/${id}`);
-      fetchProjects();
+      // 実行者かどうかで適切な関数を呼び出す
+      if (isExecutor) {
+        fetchMyProjects();
+      } else {
+        fetchProjects();
+      }
     } catch (error) {
       setError(t('projects.error.delete'));
     }

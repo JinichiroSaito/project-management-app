@@ -117,9 +117,14 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
       return res.status(404).json({ error: 'User not found' });
     }
     
+    // 実行者であることを確認
+    if (currentUser.rows[0].position !== 'executor') {
+      return res.status(403).json({ error: 'Only project executors can access this endpoint' });
+    }
+    
     let result;
     try {
-      // 新しいカラムが存在する場合のクエリ
+      // 新しいカラムが存在する場合のクエリ（自身が実行者であるプロジェクトのみ）
       result = await db.query(
         `SELECT p.*, 
                 u1.name as executor_name, u1.email as executor_email,
@@ -132,18 +137,12 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
         [currentUser.rows[0].id]
       );
     } catch (queryError) {
-      // 新しいカラムが存在しない場合（マイグレーション未実行）、既存のカラムのみで取得
-      console.warn('[My Projects] New columns not found, using legacy query:', queryError.message);
-      result = await db.query(
-        `SELECT p.*, 
-                NULL as executor_name, NULL as executor_email,
-                NULL as reviewer_name, NULL as reviewer_email
-         FROM projects p
-         ORDER BY p.created_at DESC`,
-        []
-      );
+      // 新しいカラムが存在しない場合（マイグレーション未実行）、空の配列を返す
+      console.warn('[My Projects] New columns not found, returning empty array:', queryError.message);
+      return res.json({ projects: [] });
     }
     
+    console.log(`[My Projects] Fetched ${result.rows.length} projects for executor ${currentUser.rows[0].id}`);
     res.json({ projects: result.rows });
   } catch (error) {
     console.error('Error fetching my projects:', error);
