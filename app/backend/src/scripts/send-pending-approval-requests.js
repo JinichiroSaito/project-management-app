@@ -6,9 +6,9 @@ async function sendPendingApprovalRequests() {
   try {
     console.log('Fetching pending users...');
     
-    // 承認待ちのユーザーを取得
+    // 承認待ちのユーザーを取得（プロフィール情報も含む）
     const result = await db.query(
-      'SELECT id, email, name FROM users WHERE is_approved = FALSE ORDER BY created_at DESC'
+      'SELECT id, email, name, company, department, position FROM users WHERE is_approved = FALSE ORDER BY created_at DESC'
     );
     
     if (result.rows.length === 0) {

@@ -164,7 +164,7 @@ ${appUrl}
 }
 
 // ユーザーへの承認通知メール送信
-async function sendApprovalNotificationEmail(userEmail) {
+async function sendApprovalNotificationEmail(userEmail, userName) {
   const appUrl = process.env.APP_URL || 'https://frontend-dev-823277232006.asia-northeast1.run.app';
   
   const transporter = createTransporter();
@@ -175,14 +175,16 @@ async function sendApprovalNotificationEmail(userEmail) {
     subject: '【承認完了】アカウントが承認されました',
     html: `
       <h2>アカウントが承認されました</h2>
-      <p>あなたのアカウントが承認されました。以下のリンクからログインして、プロフィール情報を登録してください。</p>
-      <p><a href="${appUrl}">${appUrl}</a></p>
+      <p>${userName ? `${userName}様、` : ''}あなたのアカウントが承認されました。</p>
+      <p>以下のリンクからログインして、アプリケーションをご利用ください。</p>
+      <p><a href="${appUrl}" style="color: #4F46E5; text-decoration: underline;">${appUrl}</a></p>
     `,
     text: `
 アカウントが承認されました
 
-あなたのアカウントが承認されました。以下のリンクからログインして、プロフィール情報を登録してください。
+${userName ? `${userName}様、` : ''}あなたのアカウントが承認されました。
 
+以下のリンクからログインして、アプリケーションをご利用ください。
 ${appUrl}
     `
   };
