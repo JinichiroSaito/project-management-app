@@ -40,11 +40,15 @@ const ProjectList = () => {
 
   const fetchMyProjects = async () => {
     try {
+      setLoading(true);
       const response = await api.get('/api/projects/my');
-      setProjects(response.data.projects);
+      setProjects(response.data.projects || []);
+      setError('');
       setLoading(false);
     } catch (error) {
-      setError(t('projects.error.fetch'));
+      console.error('Error fetching my projects:', error);
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || t('projects.error.fetch');
+      setError(errorMessage);
       setLoading(false);
     }
   };
