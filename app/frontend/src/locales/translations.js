@@ -178,6 +178,12 @@ export const translations = {
     'kpi.error.delete': 'Failed to delete KPI report',
     'kpi.deleteConfirm': 'Are you sure you want to delete this KPI report?',
     'kpi.requiredAtApplication': 'This information is required when submitting the application',
+    'kpi.plannedBudgetOptional': 'Optional for projects under 100 million yen',
+    'kpi.addSemiAnnual': 'Add Semi-Annual Report',
+    'kpi.showReports': 'Manage KPI Reports',
+    'kpi.hideReports': 'Hide KPI Reports',
+    'kpi.semiAnnualInfo': 'You can create semi-annual reports for approved projects over 500 million yen',
+    'kpi.period': 'Period',
   },
   ja: {
     // Login
