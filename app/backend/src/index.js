@@ -10,6 +10,14 @@ const PORT = process.env.PORT || 8080;
 // Firebase初期化
 initializeFirebase();
 
+// 起動時にマイグレーションを実行（開発環境のみ、または環境変数で制御）
+if (process.env.RUN_MIGRATIONS === 'true') {
+  const runMigrations = require('./migrate');
+  runMigrations().catch(err => {
+    console.error('Migration failed on startup:', err);
+  });
+}
+
 // Middleware
 app.use(express.json());
 
@@ -57,22 +65,42 @@ app.get('/health/db', async (req, res) => {
 // Public endpoint - Get all projects
 app.get('/api/projects', optionalAuth, async (req, res) => {
   try {
-    const result = await db.query(
-      `SELECT p.*, 
-              u1.name as executor_name, u1.email as executor_email,
-              u2.name as reviewer_name, u2.email as reviewer_email
-       FROM projects p
-       LEFT JOIN users u1 ON p.executor_id = u1.id
-       LEFT JOIN users u2 ON p.reviewer_id = u2.id
-       ORDER BY p.created_at DESC`
-    );
+    // まず、テーブルの構造を確認して、新しいカラムが存在するかチェック
+    let result;
+    try {
+      // 新しいカラムが存在する場合のクエリ
+      result = await db.query(
+        `SELECT p.*, 
+                u1.name as executor_name, u1.email as executor_email,
+                u2.name as reviewer_name, u2.email as reviewer_email
+         FROM projects p
+         LEFT JOIN users u1 ON p.executor_id = u1.id
+         LEFT JOIN users u2 ON p.reviewer_id = u2.id
+         ORDER BY p.created_at DESC`
+      );
+    } catch (queryError) {
+      // 新しいカラムが存在しない場合（マイグレーション未実行）、既存のカラムのみで取得
+      console.warn('[Projects] New columns not found, using legacy query:', queryError.message);
+      result = await db.query(
+        `SELECT p.*, 
+                NULL as executor_name, NULL as executor_email,
+                NULL as reviewer_name, NULL as reviewer_email
+         FROM projects p
+         ORDER BY p.created_at DESC`
+      );
+    }
+    
     res.json({ 
       projects: result.rows,
       user: req.user || null
     });
   } catch (error) {
     console.error('Error fetching projects:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error details:', error.message, error.stack);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -80,16 +108,31 @@ app.get('/api/projects', optionalAuth, async (req, res) => {
 app.get('/api/projects/:id', optionalAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await db.query(
-      `SELECT p.*, 
-              u1.name as executor_name, u1.email as executor_email,
-              u2.name as reviewer_name, u2.email as reviewer_email
-       FROM projects p
-       LEFT JOIN users u1 ON p.executor_id = u1.id
-       LEFT JOIN users u2 ON p.reviewer_id = u2.id
-       WHERE p.id = $1`,
-      [id]
-    );
+    let result;
+    try {
+      // 新しいカラムが存在する場合のクエリ
+      result = await db.query(
+        `SELECT p.*, 
+                u1.name as executor_name, u1.email as executor_email,
+                u2.name as reviewer_name, u2.email as reviewer_email
+         FROM projects p
+         LEFT JOIN users u1 ON p.executor_id = u1.id
+         LEFT JOIN users u2 ON p.reviewer_id = u2.id
+         WHERE p.id = $1`,
+        [id]
+      );
+    } catch (queryError) {
+      // 新しいカラムが存在しない場合（マイグレーション未実行）、既存のカラムのみで取得
+      console.warn('[Project] New columns not found, using legacy query:', queryError.message);
+      result = await db.query(
+        `SELECT p.*, 
+                NULL as executor_name, NULL as executor_email,
+                NULL as reviewer_name, NULL as reviewer_email
+         FROM projects p
+         WHERE p.id = $1`,
+        [id]
+      );
+    }
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Project not found' });
@@ -98,7 +141,11 @@ app.get('/api/projects/:id', optionalAuth, async (req, res) => {
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error fetching project:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error details:', error.message, error.stack);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
