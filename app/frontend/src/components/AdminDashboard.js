@@ -17,11 +17,24 @@ const AdminDashboard = () => {
     } else {
       fetchAllUsers();
     }
+    
+    // 30秒ごとにデータを更新（ポーリング、ローディング表示なし）
+    const interval = setInterval(() => {
+      if (activeTab === 'pending') {
+        fetchPendingUsers(false);
+      } else {
+        fetchAllUsers(false);
+      }
+    }, 30000);
+    
+    return () => clearInterval(interval);
   }, [activeTab]);
 
-  const fetchPendingUsers = async () => {
+  const fetchPendingUsers = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const response = await api.get('/api/admin/users/pending');
       setPendingUsers(response.data.users);
       setError('');
@@ -29,13 +42,17 @@ const AdminDashboard = () => {
       console.error('Error fetching pending users:', error);
       setError(error.response?.data?.error || 'Failed to fetch pending users');
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
-  const fetchAllUsers = async () => {
+  const fetchAllUsers = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const response = await api.get('/api/admin/users');
       setAllUsers(response.data.users);
       setError('');
@@ -43,7 +60,9 @@ const AdminDashboard = () => {
       console.error('Error fetching all users:', error);
       setError(error.response?.data?.error || 'Failed to fetch users');
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -103,8 +122,8 @@ const AdminDashboard = () => {
         </p>
       </div>
 
-      {/* タブ切り替え */}
-      <div className="mb-4 border-b border-gray-200">
+      {/* タブ切り替えと更新ボタン */}
+      <div className="mb-4 flex justify-between items-center border-b border-gray-200">
         <nav className="-mb-px flex space-x-8">
           <button
             onClick={() => setActiveTab('pending')}
@@ -127,6 +146,18 @@ const AdminDashboard = () => {
             {t('admin.tab.all', 'All Users')} ({allUsers.length})
           </button>
         </nav>
+        <button
+          onClick={() => {
+            if (activeTab === 'pending') {
+              fetchPendingUsers();
+            } else {
+              fetchAllUsers();
+            }
+          }}
+          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+        >
+          {t('admin.refresh', 'Refresh')}
+        </button>
       </div>
 
       {error && (
