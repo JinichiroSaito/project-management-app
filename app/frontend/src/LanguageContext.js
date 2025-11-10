@@ -23,8 +23,15 @@ export const LanguageProvider = ({ children }) => {
     localStorage.setItem('language', language);
   }, [language]);
 
-  const t = (key) => {
-    return translations[language]?.[key] || key;
+  const t = (key, params = {}) => {
+    let text = translations[language]?.[key] || key;
+    // パラメータ置換（例: {title} -> params.title）
+    if (params && typeof text === 'string') {
+      Object.keys(params).forEach(paramKey => {
+        text = text.replace(new RegExp(`\\{${paramKey}\\}`, 'g'), params[paramKey]);
+      });
+    }
+    return text;
   };
 
   const value = {

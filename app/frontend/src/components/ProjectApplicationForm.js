@@ -4,87 +4,87 @@ import { useAuth } from '../AuthContext';
 import { useLanguage } from '../LanguageContext';
 import KpiReportForm from './KpiReportForm';
 
-// 各セクションの説明を定義
-const sectionDescriptions = {
+// セクション定義（翻訳キーを使用）
+const sectionKeys = {
   section_2: {
-    title: '2. ターゲット顧客［必須：アイディエーション］',
-    description: [
-      'コアペルソナ 1〜3体（属性／行動／動機）',
-      '作成根拠（何名・方法・実施時期）',
-      '代替手段（現状のやり方・競合）'
+    titleKey: 'projectApplication.section.2.title',
+    descriptionKeys: [
+      'projectApplication.section.2.description.1',
+      'projectApplication.section.2.description.2',
+      'projectApplication.section.2.description.3'
     ]
   },
   section_3: {
-    title: '3. 顧客課題（具体性・深刻度）［必須：アイディエーション］',
-    description: [
-      '誰が／いつ・どこで／何をしようとして／何に阻まれるか（状況・トリガー・阻害要因・結果）',
-      'エビデンス添付：インタビュー引用・観察ノート・アンケート結果（どの結論に対応かを明記）'
+    titleKey: 'projectApplication.section.3.title',
+    descriptionKeys: [
+      'projectApplication.section.3.description.1',
+      'projectApplication.section.3.description.2'
     ]
   },
   section_4: {
-    title: '4. ソリューション仮説（課題—解決の整合）',
-    description: [
-      'どの場面で、何と比べて、どれだけ良いか（PSM等の主張と出所のトレーサビリティ）',
-      'コア機能／提供価値の要点'
+    titleKey: 'projectApplication.section.4.title',
+    descriptionKeys: [
+      'projectApplication.section.4.description.1',
+      'projectApplication.section.4.description.2'
     ]
   },
   section_5: {
-    title: '5. 差別化・自社優位',
-    description: [
-      '比較表：主要競合/代替（機能・価格・UX）',
-      '自社アセット活用（技術・データ・ブランド・チャネル・顧客基盤・人材）',
-      '優位の維持/拡張メカニズム（非模倣性、学習効果、ネットワーク、規模等）'
+    titleKey: 'projectApplication.section.5.title',
+    descriptionKeys: [
+      'projectApplication.section.5.description.1',
+      'projectApplication.section.5.description.2',
+      'projectApplication.section.5.description.3'
     ]
   },
   section_6: {
-    title: '6. 市場性',
-    description: [
-      'ターゲット市場規模（潜在顧客数／売上規模）と根拠データ',
-      '成長率・動向（将来性の仮説でも可：アイディエーション）',
-      'ニッチ戦略／拡張余地（MVPではアップデート数値）'
+    titleKey: 'projectApplication.section.6.title',
+    descriptionKeys: [
+      'projectApplication.section.6.description.1',
+      'projectApplication.section.6.description.2',
+      'projectApplication.section.6.description.3'
     ]
   },
   section_7: {
-    title: '7. 収益モデル',
-    description: [
-      '誰が何に対していくら払うか（料金形態：サブスク／従量／広告 等）',
-      '主要収益源ごとの売上規模・粗利想定（仮説で可：アイディエーション）',
-      '収支シミュレーション（主コスト要因、単価、CAC/LTV 等：MVPは更新版）'
+    titleKey: 'projectApplication.section.7.title',
+    descriptionKeys: [
+      'projectApplication.section.7.description.1',
+      'projectApplication.section.7.description.2',
+      'projectApplication.section.7.description.3'
     ]
   },
   section_8_1: {
-    title: '8-1. 検証計画：アイディエーション（PoC）［必須：核心仮説＆計画］',
-    description: [
-      '核心仮説（課題仮説／解決仮説）と検証方法（実験手法・評価指標）',
-      '期間・使用データ/技術・体制',
-      'PoCの成功判定（KPI、Go/Kill条件と未達時の対応）'
+    titleKey: 'projectApplication.section.8_1.title',
+    descriptionKeys: [
+      'projectApplication.section.8_1.description.1',
+      'projectApplication.section.8_1.description.2',
+      'projectApplication.section.8_1.description.3'
     ]
   },
   section_8_2: {
-    title: '8-2. 検証計画：MVP開発（顧客価値・有償意向）',
-    description: [
-      'コアバリューが伝わるMVPのスコープ［必須：MVPコア価値］',
-      'ユーザー参画計画（パイロット顧客/βユーザーの属性・確保状況・合意数）',
-      '価格検証／支払いフロー試行（有償転換率テスト等）',
-      '成功指標とGo/Kill基準［必須：明確化］（例：継続率・有料転換率・NPS・解約率）',
-      'トライアル運用計画（期間、サポート/問い合わせ対応、フィードバック収集）'
+    titleKey: 'projectApplication.section.8_2.title',
+    descriptionKeys: [
+      'projectApplication.section.8_2.description.1',
+      'projectApplication.section.8_2.description.2',
+      'projectApplication.section.8_2.description.3',
+      'projectApplication.section.8_2.description.4',
+      'projectApplication.section.8_2.description.5'
     ]
   },
   section_9: {
-    title: '9. 実行計画・体制・予算',
-    description: [
-      'マイルストーン（試作完了／テスト開始／評価／次フェーズ判断）',
-      '体制（必要スキル：開発・UX・ユーザー対応・マーケ）',
-      '予算内実行可否（見積根拠・リソース確保状況）',
-      'リスクと対応（技術・法規・データ入手・人員）'
+    titleKey: 'projectApplication.section.9.title',
+    descriptionKeys: [
+      'projectApplication.section.9.description.1',
+      'projectApplication.section.9.description.2',
+      'projectApplication.section.9.description.3',
+      'projectApplication.section.9.description.4'
     ]
   },
   section_10: {
-    title: '10. 自社戦略との整合',
-    description: [
-      '部署ミッション／中長期戦略との適合',
-      '「Why us」（自社でやる意義）と本業へのシナジー',
-      '検証結果の社内位置付け（次ステップ、横展開の可能性）'
+    titleKey: 'projectApplication.section.10.title',
+    descriptionKeys: [
+      'projectApplication.section.10.description.1',
+      'projectApplication.section.10.description.2',
+      'projectApplication.section.10.description.3'
     ]
   }
 };
@@ -256,16 +256,19 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
   };
 
   const renderSectionField = (sectionKey, fieldName) => {
-    const section = sectionDescriptions[sectionKey];
+    const section = sectionKeys[sectionKey];
     if (!section) return null;
+
+    const title = t(section.titleKey);
+    const descriptions = section.descriptionKeys.map(key => t(key));
 
     return (
       <div className="mb-6 border-b border-gray-200 pb-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">{section.title}</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
         <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
-          <p className="text-sm font-medium text-blue-900 mb-2">記載すべき内容：</p>
+          <p className="text-sm font-medium text-blue-900 mb-2">{t('projectApplication.section.requiredContent')}</p>
           <ul className="list-disc list-inside text-sm text-blue-800 space-y-1">
-            {section.description.map((desc, idx) => (
+            {descriptions.map((desc, idx) => (
               <li key={idx}>{desc}</li>
             ))}
           </ul>
@@ -275,7 +278,7 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
           value={formData[fieldName]}
           onChange={(e) => setFormData({ ...formData, [fieldName]: e.target.value })}
-          placeholder={`${section.title}の内容を入力してください`}
+          placeholder={t('projectApplication.section.placeholder', { title })}
         />
       </div>
     );
