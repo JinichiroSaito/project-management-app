@@ -251,6 +251,10 @@ const ProjectList = () => {
               
               return (
                 <div className="mt-4 pt-4 border-t border-gray-200">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-3">
+                    {t('projectApplication.analysis.title', 'Document Evaluation Results')}
+                  </h4>
+                  
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium text-gray-700">
                       {t('projectApplication.analysis.completeness', 'Completeness Score')}
@@ -266,7 +270,7 @@ const ProjectList = () => {
                     )}
                   </div>
                   {missingSections.completeness_score !== undefined && (
-                    <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                    <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
                       <div
                         className={`h-2 rounded-full ${
                           missingSections.completeness_score >= 80 ? 'bg-green-600' :
@@ -277,15 +281,37 @@ const ProjectList = () => {
                       />
                     </div>
                   )}
+                  
                   {missingSections.missing_sections && missingSections.missing_sections.length > 0 && (
-                    <p className="text-xs text-yellow-600 mt-1">
-                      {t('projectApplication.analysis.missingSections', 'Missing Sections')}: {missingSections.missing_sections.length}
-                    </p>
+                    <div className="mb-2 p-2 bg-yellow-50 rounded border border-yellow-200">
+                      <p className="text-xs font-medium text-yellow-800 mb-1">
+                        {t('projectApplication.analysis.missingSections', 'Missing Sections')}: {missingSections.missing_sections.length}
+                      </p>
+                    </div>
                   )}
+                  
                   {missingSections.critical_issues && missingSections.critical_issues.length > 0 && (
-                    <p className="text-xs text-red-600 mt-1">
-                      {t('projectApplication.analysis.criticalIssues', 'Critical Issues')}: {missingSections.critical_issues.length}
-                    </p>
+                    <div className="mb-2 p-2 bg-red-50 rounded border border-red-200">
+                      <p className="text-xs font-medium text-red-800 mb-1">
+                        {t('projectApplication.analysis.criticalIssues', 'Critical Issues')}: {missingSections.critical_issues.length}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {missingSections.strengths && missingSections.strengths.length > 0 && (
+                    <div className="mb-2 p-2 bg-green-50 rounded border border-green-200">
+                      <p className="text-xs font-medium text-green-800 mb-1">
+                        {t('projectApplication.analysis.strengths', 'Strengths')}: {missingSections.strengths.length}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {missingSections.recommendations && missingSections.recommendations.length > 0 && (
+                    <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                      <p className="text-xs font-medium text-blue-800 mb-1">
+                        {t('projectApplication.analysis.recommendations', 'Recommendations')}: {missingSections.recommendations.length}
+                      </p>
+                    </div>
                   )}
                 </div>
               );
@@ -293,26 +319,59 @@ const ProjectList = () => {
             
             {isExecutor && project.executor_id === userInfo?.id && (
               <div className="mt-4 flex flex-col space-y-2">
-                <div className="flex space-x-2">
+                <div className="flex flex-wrap gap-2">
                   {project.application_status === 'draft' && (
-                    <button
-                      onClick={() => setEditingProject(project)}
-                      className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
-                    >
-                      {t('projects.edit', 'Edit')}
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setEditingProject(project)}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md"
+                      >
+                        {t('projects.edit', 'Edit')}
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!project.reviewer_id) {
+                            alert(t('projectApplication.reviewerRequired', 'Please select a reviewer before submitting'));
+                            return;
+                          }
+                          if (!window.confirm(t('projectApplication.confirmSubmit', 'Are you sure you want to submit this application for review?'))) {
+                            return;
+                          }
+                          try {
+                            await api.post(`/api/projects/${project.id}/submit`);
+                            alert(t('projectApplication.submitted', 'Application submitted successfully'));
+                            if (isExecutor) {
+                              fetchMyProjects();
+                            } else {
+                              fetchProjects();
+                            }
+                          } catch (error) {
+                            console.error('Error submitting application:', error);
+                            alert(error.response?.data?.error || t('projectApplication.error.submit', 'Failed to submit application'));
+                          }
+                        }}
+                        disabled={!project.reviewer_id}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md ${
+                          project.reviewer_id
+                            ? 'bg-green-600 hover:bg-green-700 text-white'
+                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {t('projectApplication.submit', 'Submit for Review')}
+                      </button>
+                    </>
                   )}
                   {project.application_status === 'approved' && project.requested_amount && parseFloat(project.requested_amount) >= 500000000 && (
                     <button
                       onClick={() => setSelectedProjectForKpi(selectedProjectForKpi?.id === project.id ? null : project)}
-                      className="text-green-600 hover:text-green-700 text-sm font-medium"
+                      className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md"
                     >
                       {selectedProjectForKpi?.id === project.id ? t('kpi.hideReports', 'Hide KPI Reports') : t('kpi.showReports', 'Manage KPI Reports')}
                     </button>
                   )}
                   <button
                     onClick={() => handleDeleteProject(project.id)}
-                    className="text-red-600 hover:text-red-700 text-sm font-medium"
+                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md"
                   >
                     {t('projects.delete', 'Delete')}
                   </button>
