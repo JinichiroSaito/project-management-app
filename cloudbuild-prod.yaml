@@ -53,7 +53,7 @@ steps:
       - '--allow-unauthenticated'
       - '--vpc-connector=vpc-connector'
       - '--service-account=cloud-run-prod@${PROJECT_ID}.iam.gserviceaccount.com'
-      - '--set-env-vars=DB_HOST=10.81.0.6,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user,NODE_ENV=production'
+      - '--set-env-vars=DB_HOST=10.81.0.6,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user,NODE_ENV=production,GCS_BUCKET_NAME=pm-app-uploads-prod'
       - '--set-secrets=DB_PASSWORD=db-password-prod:latest,FIREBASE_SERVICE_ACCOUNT=firebase-service-account-dev:latest'
 
 options:

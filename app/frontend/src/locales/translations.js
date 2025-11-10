@@ -229,6 +229,19 @@ export const translations = {
     'projectApplication.section.10.description.3': 'Positioning of validation results within company (next steps, potential horizontal expansion)',
     'projectApplication.section.requiredContent': 'Required Content:',
     'projectApplication.section.placeholder': 'Enter content for {title}',
+    
+    // File Upload
+    'projectApplication.file.title': 'Application Document (PPT/PDF)',
+    'projectApplication.file.description': 'Please upload a PPT or PDF file containing sections 2-10 of the project application',
+    'projectApplication.file.requirement.1': 'File format: PPT (.ppt, .pptx, .pptm) or PDF (.pdf)',
+    'projectApplication.file.requirement.2': 'Maximum file size: 50MB',
+    'projectApplication.file.requirement.3': 'The document should include all required sections (2-10)',
+    'projectApplication.file.select': 'Select File',
+    'projectApplication.file.selected': 'Selected:',
+    'projectApplication.file.current': 'Current file:',
+    'projectApplication.file.download': 'Download current file',
+    'projectApplication.file.invalidType': 'Only PPT and PDF files are allowed',
+    'projectApplication.file.tooLarge': 'File size must be less than 50MB',
   },
   ja: {
     // Login
@@ -460,6 +473,19 @@ export const translations = {
     'projectApplication.section.10.description.3': '検証結果の社内位置付け（次ステップ、横展開の可能性）',
     'projectApplication.section.requiredContent': '記載すべき内容：',
     'projectApplication.section.placeholder': '{title}の内容を入力してください',
+    
+    // File Upload
+    'projectApplication.file.title': '申請書類（PPT/PDF）',
+    'projectApplication.file.description': 'プロジェクト申請のセクション2-10を含むPPTまたはPDFファイルをアップロードしてください',
+    'projectApplication.file.requirement.1': 'ファイル形式：PPT（.ppt, .pptx, .pptm）またはPDF（.pdf）',
+    'projectApplication.file.requirement.2': '最大ファイルサイズ：50MB',
+    'projectApplication.file.requirement.3': '文書には必要なセクション（2-10）がすべて含まれている必要があります',
+    'projectApplication.file.select': 'ファイルを選択',
+    'projectApplication.file.selected': '選択済み：',
+    'projectApplication.file.current': '現在のファイル：',
+    'projectApplication.file.download': '現在のファイルをダウンロード',
+    'projectApplication.file.invalidType': 'PPTとPDFファイルのみ許可されています',
+    'projectApplication.file.tooLarge': 'ファイルサイズは50MB未満である必要があります',
     
     // Projects
     'projects.myProjects': 'マイプロジェクト',

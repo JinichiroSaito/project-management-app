@@ -4,108 +4,14 @@ import { useAuth } from '../AuthContext';
 import { useLanguage } from '../LanguageContext';
 import KpiReportForm from './KpiReportForm';
 
-// セクション定義（翻訳キーを使用）
-const sectionKeys = {
-  section_2: {
-    titleKey: 'projectApplication.section.2.title',
-    descriptionKeys: [
-      'projectApplication.section.2.description.1',
-      'projectApplication.section.2.description.2',
-      'projectApplication.section.2.description.3'
-    ]
-  },
-  section_3: {
-    titleKey: 'projectApplication.section.3.title',
-    descriptionKeys: [
-      'projectApplication.section.3.description.1',
-      'projectApplication.section.3.description.2'
-    ]
-  },
-  section_4: {
-    titleKey: 'projectApplication.section.4.title',
-    descriptionKeys: [
-      'projectApplication.section.4.description.1',
-      'projectApplication.section.4.description.2'
-    ]
-  },
-  section_5: {
-    titleKey: 'projectApplication.section.5.title',
-    descriptionKeys: [
-      'projectApplication.section.5.description.1',
-      'projectApplication.section.5.description.2',
-      'projectApplication.section.5.description.3'
-    ]
-  },
-  section_6: {
-    titleKey: 'projectApplication.section.6.title',
-    descriptionKeys: [
-      'projectApplication.section.6.description.1',
-      'projectApplication.section.6.description.2',
-      'projectApplication.section.6.description.3'
-    ]
-  },
-  section_7: {
-    titleKey: 'projectApplication.section.7.title',
-    descriptionKeys: [
-      'projectApplication.section.7.description.1',
-      'projectApplication.section.7.description.2',
-      'projectApplication.section.7.description.3'
-    ]
-  },
-  section_8_1: {
-    titleKey: 'projectApplication.section.8_1.title',
-    descriptionKeys: [
-      'projectApplication.section.8_1.description.1',
-      'projectApplication.section.8_1.description.2',
-      'projectApplication.section.8_1.description.3'
-    ]
-  },
-  section_8_2: {
-    titleKey: 'projectApplication.section.8_2.title',
-    descriptionKeys: [
-      'projectApplication.section.8_2.description.1',
-      'projectApplication.section.8_2.description.2',
-      'projectApplication.section.8_2.description.3',
-      'projectApplication.section.8_2.description.4',
-      'projectApplication.section.8_2.description.5'
-    ]
-  },
-  section_9: {
-    titleKey: 'projectApplication.section.9.title',
-    descriptionKeys: [
-      'projectApplication.section.9.description.1',
-      'projectApplication.section.9.description.2',
-      'projectApplication.section.9.description.3',
-      'projectApplication.section.9.description.4'
-    ]
-  },
-  section_10: {
-    titleKey: 'projectApplication.section.10.title',
-    descriptionKeys: [
-      'projectApplication.section.10.description.1',
-      'projectApplication.section.10.description.2',
-      'projectApplication.section.10.description.3'
-    ]
-  }
-};
-
 const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
   const [formData, setFormData] = useState({
     name: project?.name || '',
     description: project?.description || '',
     requested_amount: project?.requested_amount || '',
-    reviewer_id: project?.reviewer_id || '',
-    section_2_target_customers: project?.section_2_target_customers || '',
-    section_3_customer_problems: project?.section_3_customer_problems || '',
-    section_4_solution_hypothesis: project?.section_4_solution_hypothesis || '',
-    section_5_differentiation: project?.section_5_differentiation || '',
-    section_6_market_potential: project?.section_6_market_potential || '',
-    section_7_revenue_model: project?.section_7_revenue_model || '',
-    section_8_1_ideation_plan: project?.section_8_1_ideation_plan || '',
-    section_8_2_mvp_plan: project?.section_8_2_mvp_plan || '',
-    section_9_execution_plan: project?.section_9_execution_plan || '',
-    section_10_strategic_alignment: project?.section_10_strategic_alignment || ''
+    reviewer_id: project?.reviewer_id || ''
   });
+  const [selectedFile, setSelectedFile] = useState(null);
   const [reviewers, setReviewers] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -143,12 +49,25 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
     setLoading(true);
 
     try {
+      // FormDataを使用してファイルアップロード
+      const formDataToSend = new FormData();
+      formDataToSend.append('name', formData.name);
+      formDataToSend.append('description', formData.description || '');
+      formDataToSend.append('requested_amount', formData.requested_amount);
+      if (formData.reviewer_id) {
+        formDataToSend.append('reviewer_id', formData.reviewer_id);
+      }
+      
+      if (selectedFile) {
+        formDataToSend.append('applicationFile', selectedFile);
+      }
+
       if (project) {
         // 更新
-        await api.put(`/api/projects/${project.id}`, formData);
+        await api.put(`/api/projects/${project.id}`, formDataToSend);
       } else {
         // 新規作成
-        await api.post('/api/projects', formData);
+        await api.post('/api/projects', formDataToSend);
       }
       
       if (onComplete) {
@@ -255,33 +174,41 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
     over_500m: t('projectApplication.reportingRequirement.over500m', 'Semi-annual: Set KPIs and budget, report usage and results once. Also required to apply for next year budget at year-end')
   };
 
-  const renderSectionField = (sectionKey, fieldName) => {
-    const section = sectionKeys[sectionKey];
-    if (!section) return null;
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // ファイルタイプの検証
+      const allowedTypes = [
+        'application/pdf',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'application/vnd.ms-powerpoint.presentation.macroEnabled.12'
+      ];
+      const allowedExtensions = ['.pdf', '.ppt', '.pptx', '.pptm'];
+      const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+      
+      if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+        setError(t('projectApplication.file.invalidType', 'Only PPT and PDF files are allowed'));
+        return;
+      }
+      
+      // ファイルサイズの検証（50MB制限）
+      if (file.size > 50 * 1024 * 1024) {
+        setError(t('projectApplication.file.tooLarge', 'File size must be less than 50MB'));
+        return;
+      }
+      
+      setSelectedFile(file);
+      setError('');
+    }
+  };
 
-    const title = t(section.titleKey);
-    const descriptions = section.descriptionKeys.map(key => t(key));
-
-    return (
-      <div className="mb-6 border-b border-gray-200 pb-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
-        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
-          <p className="text-sm font-medium text-blue-900 mb-2">{t('projectApplication.section.requiredContent')}</p>
-          <ul className="list-disc list-inside text-sm text-blue-800 space-y-1">
-            {descriptions.map((desc, idx) => (
-              <li key={idx}>{desc}</li>
-            ))}
-          </ul>
-        </div>
-        <textarea
-          rows="6"
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-          value={formData[fieldName]}
-          onChange={(e) => setFormData({ ...formData, [fieldName]: e.target.value })}
-          placeholder={t('projectApplication.section.placeholder', { title })}
-        />
-      </div>
-    );
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
   return (
@@ -324,17 +251,58 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
             />
           </div>
 
-          {/* セクション2-10の入力フィールド */}
-          {renderSectionField('section_2', 'section_2_target_customers')}
-          {renderSectionField('section_3', 'section_3_customer_problems')}
-          {renderSectionField('section_4', 'section_4_solution_hypothesis')}
-          {renderSectionField('section_5', 'section_5_differentiation')}
-          {renderSectionField('section_6', 'section_6_market_potential')}
-          {renderSectionField('section_7', 'section_7_revenue_model')}
-          {renderSectionField('section_8_1', 'section_8_1_ideation_plan')}
-          {renderSectionField('section_8_2', 'section_8_2_mvp_plan')}
-          {renderSectionField('section_9', 'section_9_execution_plan')}
-          {renderSectionField('section_10', 'section_10_strategic_alignment')}
+          {/* ファイルアップロード */}
+          <div className="mb-6 border-b border-gray-200 pb-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {t('projectApplication.file.title', 'Application Document (PPT/PDF)')}
+            </h3>
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
+              <p className="text-sm font-medium text-blue-900 mb-2">
+                {t('projectApplication.file.description', 'Please upload a PPT or PDF file containing sections 2-10 of the project application')}
+              </p>
+              <ul className="list-disc list-inside text-sm text-blue-800 space-y-1">
+                <li>{t('projectApplication.file.requirement.1', 'File format: PPT (.ppt, .pptx, .pptm) or PDF (.pdf)')}</li>
+                <li>{t('projectApplication.file.requirement.2', 'Maximum file size: 50MB')}</li>
+                <li>{t('projectApplication.file.requirement.3', 'The document should include all required sections (2-10)')}</li>
+              </ul>
+            </div>
+            
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('projectApplication.file.select', 'Select File')}
+              </label>
+              <input
+                type="file"
+                accept=".pdf,.ppt,.pptx,.pptm"
+                onChange={handleFileChange}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+              />
+              
+              {selectedFile && (
+                <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                  <p className="text-sm text-green-800">
+                    <strong>{t('projectApplication.file.selected', 'Selected:')}</strong> {selectedFile.name} ({formatFileSize(selectedFile.size)})
+                  </p>
+                </div>
+              )}
+              
+              {project?.application_file_url && !selectedFile && (
+                <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                  <p className="text-sm text-gray-700 mb-2">
+                    <strong>{t('projectApplication.file.current', 'Current file:')}</strong> {project.application_file_name || 'N/A'}
+                  </p>
+                  <a
+                    href={project.application_file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
+                  >
+                    {t('projectApplication.file.download', 'Download current file')}
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700">

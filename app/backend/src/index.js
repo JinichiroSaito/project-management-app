@@ -3,6 +3,8 @@ const db = require('./db');
 const admin = require('firebase-admin');
 const { authenticateToken, optionalAuth, requireAdmin, requireApproved, initializeFirebase } = require('./middleware/auth');
 const { sendApprovalRequestEmail, sendApprovalNotificationEmail, sendRegistrationConfirmationEmail } = require('./utils/email');
+const upload = require('./middleware/upload');
+const { uploadFile, deleteFile } = require('./utils/storage');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -19,7 +21,8 @@ if (process.env.RUN_MIGRATIONS === 'true') {
 }
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '50mb' })); // ファイルアップロード用にサイズ制限を拡大
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // リクエストログミドルウェア
 app.use((req, res, next) => {
@@ -283,23 +286,13 @@ app.get('/api/projects/:id', optionalAuth, async (req, res) => {
 });
 
 // Protected endpoint - Create new project (application)
-app.post('/api/projects', authenticateToken, requireApproved, async (req, res) => {
+app.post('/api/projects', authenticateToken, requireApproved, upload.single('applicationFile'), async (req, res) => {
   try {
     const { 
       name, 
       description, 
       requested_amount, 
-      reviewer_id,
-      section_2_target_customers,
-      section_3_customer_problems,
-      section_4_solution_hypothesis,
-      section_5_differentiation,
-      section_6_market_potential,
-      section_7_revenue_model,
-      section_8_1_ideation_plan,
-      section_8_2_mvp_plan,
-      section_9_execution_plan,
-      section_10_strategic_alignment
+      reviewer_id
     } = req.body;
     
     if (!name) {
@@ -343,17 +336,29 @@ app.post('/api/projects', authenticateToken, requireApproved, async (req, res) =
       }
     }
     
-    // 新しいカラムが存在するかチェックしてからINSERT
+    // ファイルアップロード処理
+    let fileInfo = null;
+    if (req.file) {
+      try {
+        fileInfo = await uploadFile(req.file, null, executorId.toString());
+      } catch (uploadError) {
+        console.error('[Project Create] File upload failed:', uploadError);
+        return res.status(500).json({ 
+          error: 'File upload failed',
+          message: uploadError.message
+        });
+      }
+    }
+    
+    // プロジェクトを作成
     let result;
     try {
-      // セクションカラムが存在する場合のINSERT
+      // ファイルアップロードカラムが存在する場合のINSERT
       result = await db.query(
         `INSERT INTO projects (
           name, description, status, executor_id, reviewer_id, requested_amount, application_status,
-          section_2_target_customers, section_3_customer_problems, section_4_solution_hypothesis,
-          section_5_differentiation, section_6_market_potential, section_7_revenue_model,
-          section_8_1_ideation_plan, section_8_2_mvp_plan, section_9_execution_plan, section_10_strategic_alignment
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING *`,
+          application_file_url, application_file_name, application_file_type, application_file_size, application_file_uploaded_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
         [
           name, 
           description || '', 
@@ -362,22 +367,22 @@ app.post('/api/projects', authenticateToken, requireApproved, async (req, res) =
           reviewer_id || null, 
           requested_amount, 
           'draft',
-          section_2_target_customers || null,
-          section_3_customer_problems || null,
-          section_4_solution_hypothesis || null,
-          section_5_differentiation || null,
-          section_6_market_potential || null,
-          section_7_revenue_model || null,
-          section_8_1_ideation_plan || null,
-          section_8_2_mvp_plan || null,
-          section_9_execution_plan || null,
-          section_10_strategic_alignment || null
+          fileInfo?.url || null,
+          fileInfo?.originalName || null,
+          fileInfo?.contentType || null,
+          fileInfo?.size || null,
+          fileInfo ? new Date() : null
         ]
       );
     } catch (insertError) {
-      // セクションカラムが存在しない場合、従来の形式でINSERT
+      // ファイルアップロードに失敗した場合、アップロードしたファイルを削除
+      if (fileInfo) {
+        await deleteFile(fileInfo.url);
+      }
+      
+      // ファイルカラムが存在しない場合、従来の形式でINSERT
       if (insertError.message && insertError.message.includes('column') && insertError.message.includes('does not exist')) {
-        console.warn('[Project Create] Section columns not found, using legacy format');
+        console.warn('[Project Create] File columns not found, using legacy format');
         try {
           result = await db.query(
             'INSERT INTO projects (name, description, status, executor_id, reviewer_id, requested_amount, application_status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
@@ -410,7 +415,7 @@ app.post('/api/projects', authenticateToken, requireApproved, async (req, res) =
 });
 
 // Protected endpoint - Update project (application)
-app.put('/api/projects/:id', authenticateToken, async (req, res) => {
+app.put('/api/projects/:id', authenticateToken, upload.single('applicationFile'), async (req, res) => {
   try {
     const { id } = req.params;
     const { 
@@ -419,17 +424,7 @@ app.put('/api/projects/:id', authenticateToken, async (req, res) => {
       status, 
       requested_amount, 
       reviewer_id, 
-      application_status,
-      section_2_target_customers,
-      section_3_customer_problems,
-      section_4_solution_hypothesis,
-      section_5_differentiation,
-      section_6_market_potential,
-      section_7_revenue_model,
-      section_8_1_ideation_plan,
-      section_8_2_mvp_plan,
-      section_9_execution_plan,
-      section_10_strategic_alignment
+      application_status
     } = req.body;
     
     // プロジェクトの所有者を確認
@@ -443,7 +438,7 @@ app.put('/api/projects/:id', authenticateToken, async (req, res) => {
     }
     
     const project = await db.query(
-      'SELECT executor_id, reviewer_id, application_status FROM projects WHERE id = $1',
+      'SELECT executor_id, reviewer_id, application_status, application_file_url FROM projects WHERE id = $1',
       [id]
     );
     
@@ -488,10 +483,28 @@ app.put('/api/projects/:id', authenticateToken, async (req, res) => {
       }
     }
     
-    // セクションカラムが存在するかチェックしてからUPDATE
+    // ファイルアップロード処理（新しいファイルがアップロードされた場合）
+    let fileInfo = null;
+    let oldFileUrl = null;
+    if (req.file) {
+      // 既存のファイルがあれば削除対象として記録
+      oldFileUrl = projectData.application_file_url;
+      
+      try {
+        fileInfo = await uploadFile(req.file, id.toString(), currentUser.rows[0].id.toString());
+      } catch (uploadError) {
+        console.error('[Project Update] File upload failed:', uploadError);
+        return res.status(500).json({ 
+          error: 'File upload failed',
+          message: uploadError.message
+        });
+      }
+    }
+    
+    // ファイルアップロードカラムが存在するかチェックしてからUPDATE
     let result;
     try {
-      // セクションカラムが存在する場合のUPDATE
+      // ファイルアップロードカラムが存在する場合のUPDATE
       result = await db.query(
         `UPDATE projects 
          SET name = COALESCE($1, name), 
@@ -500,30 +513,37 @@ app.put('/api/projects/:id', authenticateToken, async (req, res) => {
              requested_amount = COALESCE($4, requested_amount),
              reviewer_id = COALESCE($5, reviewer_id),
              application_status = COALESCE($6, application_status),
-             section_2_target_customers = COALESCE($7, section_2_target_customers),
-             section_3_customer_problems = COALESCE($8, section_3_customer_problems),
-             section_4_solution_hypothesis = COALESCE($9, section_4_solution_hypothesis),
-             section_5_differentiation = COALESCE($10, section_5_differentiation),
-             section_6_market_potential = COALESCE($11, section_6_market_potential),
-             section_7_revenue_model = COALESCE($12, section_7_revenue_model),
-             section_8_1_ideation_plan = COALESCE($13, section_8_1_ideation_plan),
-             section_8_2_mvp_plan = COALESCE($14, section_8_2_mvp_plan),
-             section_9_execution_plan = COALESCE($15, section_9_execution_plan),
-             section_10_strategic_alignment = COALESCE($16, section_10_strategic_alignment),
+             application_file_url = COALESCE($7, application_file_url),
+             application_file_name = COALESCE($8, application_file_name),
+             application_file_type = COALESCE($9, application_file_type),
+             application_file_size = COALESCE($10, application_file_size),
+             application_file_uploaded_at = COALESCE($11, application_file_uploaded_at),
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $17 RETURNING *`,
+         WHERE id = $12 RETURNING *`,
         [
           name, description, status, requested_amount, reviewer_id, application_status,
-          section_2_target_customers, section_3_customer_problems, section_4_solution_hypothesis,
-          section_5_differentiation, section_6_market_potential, section_7_revenue_model,
-          section_8_1_ideation_plan, section_8_2_mvp_plan, section_9_execution_plan, section_10_strategic_alignment,
+          fileInfo?.url || null,
+          fileInfo?.originalName || null,
+          fileInfo?.contentType || null,
+          fileInfo?.size || null,
+          fileInfo ? new Date() : null,
           id
         ]
       );
+      
+      // 新しいファイルがアップロードされた場合、古いファイルを削除
+      if (fileInfo && oldFileUrl) {
+        await deleteFile(oldFileUrl);
+      }
     } catch (updateError) {
-      // セクションカラムが存在しない場合、従来の形式でUPDATE
+      // 新しいファイルをアップロードしたが、更新に失敗した場合、アップロードしたファイルを削除
+      if (fileInfo) {
+        await deleteFile(fileInfo.url);
+      }
+      
+      // ファイルカラムが存在しない場合、従来の形式でUPDATE
       if (updateError.message && updateError.message.includes('column') && updateError.message.includes('does not exist')) {
-        console.warn('[Project Update] Section columns not found, using legacy format');
+        console.warn('[Project Update] File columns not found, using legacy format');
         result = await db.query(
           `UPDATE projects 
            SET name = COALESCE($1, name), 

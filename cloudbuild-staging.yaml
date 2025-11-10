@@ -57,7 +57,7 @@ steps:
       - '--allow-unauthenticated'
       - '--vpc-connector=vpc-connector'
       - '--service-account=cloud-run-staging@${PROJECT_ID}.iam.gserviceaccount.com'
-      - '--set-env-vars=DB_HOST=10.81.0.10,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user,NODE_ENV=staging'
+      - '--set-env-vars=DB_HOST=10.81.0.10,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user,NODE_ENV=staging,GCS_BUCKET_NAME=pm-app-uploads-staging'
       - '--set-secrets=DB_PASSWORD=db-password-staging:latest,FIREBASE_SERVICE_ACCOUNT=firebase-service-account-dev:latest'
 
 options:

@@ -167,6 +167,39 @@ module "database_prod" {
   depends_on = [module.database_dev]
 }
 
+# Cloud Storageモジュール（開発環境）
+module "storage_dev" {
+  source              = "./modules/storage"
+  project_id          = var.project_id
+  region              = var.region
+  environment         = "dev"
+  cloud_run_sa_email = module.service_accounts.cloud_run_dev_sa_email
+  
+  depends_on = [module.service_accounts]
+}
+
+# Cloud Storageモジュール（Staging環境）
+module "storage_staging" {
+  source              = "./modules/storage"
+  project_id          = var.project_id
+  region              = var.region
+  environment         = "staging"
+  cloud_run_sa_email = module.service_accounts.cloud_run_staging_sa_email
+  
+  depends_on = [module.service_accounts]
+}
+
+# Cloud Storageモジュール（Production環境）
+module "storage_prod" {
+  source              = "./modules/storage"
+  project_id          = var.project_id
+  region              = var.region
+  environment         = "prod"
+  cloud_run_sa_email = module.service_accounts.cloud_run_production_sa_email
+  
+  depends_on = [module.service_accounts]
+}
+
 # 出力追加
 output "database_connection_name" {
   value       = module.database_dev.instance_connection_name
@@ -215,4 +248,20 @@ output "database_private_ip_prod" {
   value       = module.database_prod.private_ip_address
   description = "Production Database Private IP"
   sensitive   = false
+}
+
+# Cloud Storage出力
+output "storage_bucket_name_dev" {
+  value       = module.storage_dev.bucket_name
+  description = "Dev Cloud Storage Bucket Name"
+}
+
+output "storage_bucket_name_staging" {
+  value       = module.storage_staging.bucket_name
+  description = "Staging Cloud Storage Bucket Name"
+}
+
+output "storage_bucket_name_prod" {
+  value       = module.storage_prod.bucket_name
+  description = "Production Cloud Storage Bucket Name"
 }
