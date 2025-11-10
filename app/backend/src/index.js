@@ -1,3 +1,8 @@
+// ローカル開発環境で.envファイルを読み込む
+if (process.env.NODE_ENV !== 'production' && !process.env.GCP_PROJECT) {
+  require('dotenv').config();
+}
+
 const express = require('express');
 const db = require('./db');
 const admin = require('firebase-admin');
@@ -5,6 +10,7 @@ const { authenticateToken, optionalAuth, requireAdmin, requireApproved, initiali
 const { sendApprovalRequestEmail, sendApprovalNotificationEmail, sendRegistrationConfirmationEmail } = require('./utils/email');
 const upload = require('./middleware/upload');
 const { uploadFile, deleteFile } = require('./utils/storage');
+const { extractTextFromFile, checkMissingSections } = require('./utils/gemini');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -1411,6 +1417,234 @@ app.use((error, req, res, next) => {
   
   if (!res.headersSent) {
     return handleError(res, error, 'Unhandled Error');
+  }
+});
+
+// Protected endpoint - Extract text from uploaded file
+app.post('/api/projects/:id/extract-text', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // プロジェクトを取得
+    const project = await db.query(
+      'SELECT id, application_file_url, application_file_name, application_file_type, executor_id FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const projectData = project.rows[0];
+    
+    // ファイルがアップロードされているか確認
+    if (!projectData.application_file_url) {
+      return res.status(400).json({ error: 'No file uploaded for this project' });
+    }
+    
+    // 現在のユーザーが実行者または管理者か確認
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const isExecutor = projectData.executor_id === currentUser.rows[0].id;
+    const isAdmin = currentUser.rows[0].position === 'admin';
+    
+    if (!isExecutor && !isAdmin) {
+      return res.status(403).json({ error: 'You do not have permission to extract text from this project' });
+    }
+    
+    // テキストを抽出
+    // ファイル名から拡張子を判定してMIMEタイプを決定
+    let fileType = projectData.application_file_type;
+    if (!fileType && projectData.application_file_name) {
+      const fileName = projectData.application_file_name.toLowerCase();
+      if (fileName.endsWith('.pdf')) {
+        fileType = 'application/pdf';
+      } else if (fileName.endsWith('.pptx')) {
+        fileType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      } else if (fileName.endsWith('.ppt')) {
+        fileType = 'application/vnd.ms-powerpoint';
+      } else if (fileName.endsWith('.pptm')) {
+        fileType = 'application/vnd.ms-powerpoint.presentation.macroEnabled.12';
+      }
+    }
+    
+    const extractedText = await extractTextFromFile(
+      projectData.application_file_url,
+      fileType
+    );
+    
+    // データベースに保存
+    await db.query(
+      `UPDATE projects 
+       SET extracted_text = $1, 
+           extracted_text_updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2`,
+      [extractedText, id]
+    );
+    
+    res.json({
+      success: true,
+      extracted_text: extractedText,
+      message: 'Text extracted successfully'
+    });
+  } catch (error) {
+    return handleError(res, error, 'Extract Text');
+  }
+});
+
+// Protected endpoint - Check missing sections
+app.post('/api/projects/:id/check-missing-sections', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // プロジェクトを取得
+    const project = await db.query(
+      'SELECT id, extracted_text, executor_id FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const projectData = project.rows[0];
+    
+    // 抽出されたテキストがあるか確認
+    if (!projectData.extracted_text) {
+      return res.status(400).json({ 
+        error: 'No extracted text found. Please extract text from the uploaded file first.' 
+      });
+    }
+    
+    // 現在のユーザーが実行者または管理者か確認
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const isExecutor = projectData.executor_id === currentUser.rows[0].id;
+    const isAdmin = currentUser.rows[0].position === 'admin';
+    
+    if (!isExecutor && !isAdmin) {
+      return res.status(403).json({ error: 'You do not have permission to check missing sections for this project' });
+    }
+    
+    // 不足部分をチェック
+    const analysisResult = await checkMissingSections(projectData.extracted_text);
+    
+    // データベースに保存
+    await db.query(
+      `UPDATE projects 
+       SET missing_sections = $1, 
+           missing_sections_updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2`,
+      [JSON.stringify(analysisResult), id]
+    );
+    
+    res.json({
+      success: true,
+      analysis: analysisResult,
+      message: 'Missing sections checked successfully'
+    });
+  } catch (error) {
+    return handleError(res, error, 'Check Missing Sections');
+  }
+});
+
+// Protected endpoint - Get extracted text
+app.get('/api/projects/:id/extracted-text', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const project = await db.query(
+      'SELECT id, extracted_text, extracted_text_updated_at, executor_id FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const projectData = project.rows[0];
+    
+    // 現在のユーザーが実行者、審査者、または管理者か確認
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const isExecutor = projectData.executor_id === currentUser.rows[0].id;
+    const isReviewer = projectData.reviewer_id === currentUser.rows[0].id;
+    const isAdmin = currentUser.rows[0].position === 'admin';
+    
+    if (!isExecutor && !isReviewer && !isAdmin) {
+      return res.status(403).json({ error: 'You do not have permission to view extracted text for this project' });
+    }
+    
+    res.json({
+      extracted_text: projectData.extracted_text,
+      extracted_text_updated_at: projectData.extracted_text_updated_at
+    });
+  } catch (error) {
+    return handleError(res, error, 'Get Extracted Text');
+  }
+});
+
+// Protected endpoint - Get missing sections analysis
+app.get('/api/projects/:id/missing-sections', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const project = await db.query(
+      'SELECT id, missing_sections, missing_sections_updated_at, executor_id, reviewer_id FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const projectData = project.rows[0];
+    
+    // 現在のユーザーが実行者、審査者、または管理者か確認
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const isExecutor = projectData.executor_id === currentUser.rows[0].id;
+    const isReviewer = projectData.reviewer_id === currentUser.rows[0].id;
+    const isAdmin = currentUser.rows[0].position === 'admin';
+    
+    if (!isExecutor && !isReviewer && !isAdmin) {
+      return res.status(403).json({ error: 'You do not have permission to view missing sections for this project' });
+    }
+    
+    res.json({
+      missing_sections: projectData.missing_sections,
+      missing_sections_updated_at: projectData.missing_sections_updated_at
+    });
+  } catch (error) {
+    return handleError(res, error, 'Get Missing Sections');
   }
 });
 
