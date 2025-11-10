@@ -182,7 +182,11 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
       return res.status(404).json({ error: 'User not found' });
     }
     
-    console.log('[My Projects] Current user:', currentUser.rows[0]);
+    console.log('[My Projects] Current user:', {
+      id: currentUser.rows[0].id,
+      email: req.user.email,
+      position: currentUser.rows[0].position
+    });
     
     // 実行者であることを確認
     if (currentUser.rows[0].position !== 'executor') {
@@ -212,6 +216,9 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
         [currentUser.rows[0].id]
       );
       console.log('[My Projects] Query successful, found', result.rows.length, 'projects');
+      if (result.rows.length > 0) {
+        console.log('[My Projects] First project executor_id:', result.rows[0].executor_id, 'Query executor_id:', currentUser.rows[0].id);
+      }
     } catch (queryError) {
       // 新しいカラムが存在しない場合、従来のクエリを試行
       console.warn('[My Projects] New columns not found, trying legacy query:', queryError.message);
@@ -439,8 +446,18 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
       console.log('[Project Create] Project created successfully:', {
         id: result.rows[0].id,
         name: result.rows[0].name,
-        executor_id: result.rows[0].executor_id
+        executor_id: result.rows[0].executor_id,
+        executor_email: req.user.email,
+        current_user_id: executorId
       });
+      
+      // executor_idが正しく設定されているか確認
+      if (result.rows[0].executor_id !== executorId) {
+        console.error('[Project Create] WARNING: executor_id mismatch!', {
+          expected: executorId,
+          actual: result.rows[0].executor_id
+        });
+      }
       
       // ファイルがアップロードされている場合、自動的にテキスト抽出と評価を実行
       if (fileInfo?.url) {

@@ -100,17 +100,23 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
       if (response && (response.status === 200 || response.status === 201)) {
         console.log('[ProjectApplicationForm] Save successful, calling onComplete');
         console.log('[ProjectApplicationForm] Saved project data:', response.data);
+        console.log('[ProjectApplicationForm] Project executor_id:', response.data?.executor_id);
         
         // 新規作成の場合、projectオブジェクトを更新
         if (!project && response.data) {
-          console.log('[ProjectApplicationForm] New project created, updating project state');
-          // projectオブジェクトは親コンポーネントで管理されているため、ここでは更新しない
-          // 代わりに、onCompleteで一覧を更新する
+          console.log('[ProjectApplicationForm] New project created:', {
+            id: response.data.id,
+            name: response.data.name,
+            executor_id: response.data.executor_id
+          });
         }
         
         if (onComplete) {
           console.log('[ProjectApplicationForm] Calling onComplete callback');
-          onComplete();
+          // 少し待ってからonCompleteを呼び出す（バックエンドの処理が完了するのを待つ）
+          setTimeout(() => {
+            onComplete();
+          }, 500);
         } else {
           console.warn('[ProjectApplicationForm] onComplete callback not provided');
         }
