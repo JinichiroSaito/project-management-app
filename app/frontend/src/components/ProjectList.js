@@ -45,11 +45,19 @@ const ProjectList = () => {
     try {
       setLoading(true);
       setError('');
-      console.log('[ProjectList] Fetching my projects...', { isExecutor, userInfo });
+      console.log('[ProjectList] Fetching my projects...', { isExecutor, userInfo, userId: userInfo?.id });
       const response = await api.get('/api/projects/my');
-      console.log('[ProjectList] Fetched projects:', response.data);
-      setProjects(response.data.projects || []);
+      console.log('[ProjectList] API response:', response);
+      console.log('[ProjectList] Fetched projects data:', response.data);
+      const projectsList = response.data.projects || [];
+      console.log('[ProjectList] Projects list:', projectsList);
+      console.log('[ProjectList] Number of projects:', projectsList.length);
+      setProjects(projectsList);
       setLoading(false);
+      
+      if (projectsList.length === 0) {
+        console.warn('[ProjectList] No projects found for executor:', userInfo?.id);
+      }
     } catch (error) {
       console.error('Error fetching my projects:', error);
       console.error('Error details:', {
@@ -64,16 +72,20 @@ const ProjectList = () => {
   };
 
   const handleFormComplete = () => {
-    console.log('[ProjectList] handleFormComplete called', { isExecutor, userInfo });
+    console.log('[ProjectList] handleFormComplete called', { isExecutor, userInfo, userInfoId: userInfo?.id });
     setShowForm(false);
     setEditingProject(null);
-    if (isExecutor) {
-      console.log('[ProjectList] Refreshing my projects...');
-      fetchMyProjects();
-    } else {
-      console.log('[ProjectList] Refreshing all projects...');
-      fetchProjects();
-    }
+    
+    // 少し待ってからプロジェクト一覧を更新（非同期処理が完了するのを待つ）
+    setTimeout(() => {
+      if (isExecutor) {
+        console.log('[ProjectList] Refreshing my projects after delay...');
+        fetchMyProjects();
+      } else {
+        console.log('[ProjectList] Refreshing all projects after delay...');
+        fetchProjects();
+      }
+    }, 1000); // 1秒待つ（テキスト抽出や評価の処理が完了するのを待つ）
   };
 
   const handleDeleteProject = async (id) => {
