@@ -83,20 +83,30 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
         console.warn('[ProjectApplicationForm] No file selected');
       }
 
+      let response;
       if (project) {
         // 更新
         console.log('[ProjectApplicationForm] Updating project:', project.id);
-        const response = await api.put(`/api/projects/${project.id}`, formDataToSend);
+        response = await api.put(`/api/projects/${project.id}`, formDataToSend);
         console.log('[ProjectApplicationForm] Update response:', response.data);
       } else {
         // 新規作成
         console.log('[ProjectApplicationForm] Creating new project');
-        const response = await api.post('/api/projects', formDataToSend);
+        response = await api.post('/api/projects', formDataToSend);
         console.log('[ProjectApplicationForm] Create response:', response.data);
       }
       
-      if (onComplete) {
-        onComplete();
+      // 保存成功を確認
+      if (response && (response.status === 200 || response.status === 201)) {
+        console.log('[ProjectApplicationForm] Save successful, calling onComplete');
+        if (onComplete) {
+          onComplete();
+        } else {
+          console.warn('[ProjectApplicationForm] onComplete callback not provided');
+        }
+      } else {
+        console.error('[ProjectApplicationForm] Unexpected response status:', response?.status);
+        setError(t('projectApplication.error.save', 'Failed to save project application'));
       }
     } catch (error) {
       console.error('Error saving project application:', error);
@@ -153,10 +163,13 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
   };
 
   const handleKpiReportComplete = () => {
+    console.log('[ProjectApplicationForm] KPI report saved, refreshing KPI reports list');
     setShowKpiForm(false);
     setEditingKpiReport(null);
     setKpiReportType(null);
     fetchKpiReports();
+    // KPIレポート保存後は、プロジェクト一覧を更新する必要はない
+    // （プロジェクト自体は変更されていないため）
   };
 
   const handleDeleteKpiReport = async (reportId) => {

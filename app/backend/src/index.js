@@ -211,6 +211,7 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
          ORDER BY p.created_at DESC`,
         [currentUser.rows[0].id]
       );
+      console.log('[My Projects] Query successful, found', result.rows.length, 'projects');
     } catch (queryError) {
       // 新しいカラムが存在しない場合、従来のクエリを試行
       console.warn('[My Projects] New columns not found, trying legacy query:', queryError.message);
@@ -226,6 +227,7 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
            ORDER BY p.created_at DESC`,
           [currentUser.rows[0].id]
         );
+        console.log('[My Projects] Legacy query successful, found', result.rows.length, 'projects');
       } catch (legacyError) {
         console.error('[My Projects] Legacy query also failed:', legacyError.message);
         return res.json({ projects: [] });
@@ -410,6 +412,7 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
     }
     
     // プロジェクトを作成
+    console.log('[Project Create] Creating project with executor_id:', executorId, 'for user:', req.user.email);
     let result;
     try {
       // ファイルアップロードカラムが存在する場合のINSERT
@@ -433,6 +436,11 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
           fileInfo ? new Date() : null
         ]
       );
+      console.log('[Project Create] Project created successfully:', {
+        id: result.rows[0].id,
+        name: result.rows[0].name,
+        executor_id: result.rows[0].executor_id
+      });
     } catch (insertError) {
       // ファイルアップロードに失敗した場合、アップロードしたファイルを削除
       if (fileInfo) {

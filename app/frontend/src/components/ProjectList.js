@@ -64,11 +64,14 @@ const ProjectList = () => {
   };
 
   const handleFormComplete = () => {
+    console.log('[ProjectList] handleFormComplete called', { isExecutor, userInfo });
     setShowForm(false);
     setEditingProject(null);
     if (isExecutor) {
+      console.log('[ProjectList] Refreshing my projects...');
       fetchMyProjects();
     } else {
+      console.log('[ProjectList] Refreshing all projects...');
       fetchProjects();
     }
   };
