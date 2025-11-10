@@ -111,6 +111,9 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
           });
         }
         
+        // 保存成功メッセージを表示
+        alert(t('projectApplication.saved', 'Project saved successfully'));
+        
         if (onComplete) {
           console.log('[ProjectApplicationForm] Calling onComplete callback');
           // プロジェクト作成が完了したら即座にonCompleteを呼び出す

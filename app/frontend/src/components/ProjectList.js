@@ -101,6 +101,19 @@ const ProjectList = () => {
     
     // プロジェクト一覧を更新（データベース反映を待つため、少し待機）
     // プロジェクト作成→データベース反映→一覧取得の順序を保証
+    // まず即座に一度取得を試みる
+    if (isExecutor) {
+      console.log('[ProjectList] Refreshing my projects immediately...', {
+        userInfoId: userInfo?.id,
+        userInfoEmail: userInfo?.email
+      });
+      fetchMyProjects();
+    } else {
+      console.log('[ProjectList] Refreshing all projects immediately...');
+      fetchProjects();
+    }
+    
+    // その後、データベース反映を待って再度取得
     setTimeout(() => {
       if (isExecutor) {
         console.log('[ProjectList] Refreshing my projects after delay...', {
@@ -112,7 +125,7 @@ const ProjectList = () => {
         console.log('[ProjectList] Refreshing all projects after delay...');
         fetchProjects();
       }
-    }, 2000); // 2秒待つ（データベース反映とテキスト抽出や評価の処理が完了するのを待つ）
+    }, 3000); // 3秒待つ（データベース反映とテキスト抽出や評価の処理が完了するのを待つ）
   };
 
   const handleDeleteProject = async (id) => {
