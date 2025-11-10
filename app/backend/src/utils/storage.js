@@ -60,20 +60,22 @@ async function uploadFile(file, projectId, userId) {
 
       stream.on('finish', async () => {
         try {
-          // ファイルを公開（または署名付きURLを生成）
-          await fileObj.makePublic();
-          
-          const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+          // Uniform bucket-level accessが有効な場合、makePublic()は使用できない
+          // 代わりに署名付きURLを生成（有効期限: 1年）
+          const [signedUrl] = await fileObj.getSignedUrl({
+            action: 'read',
+            expires: Date.now() + 365 * 24 * 60 * 60 * 1000, // 1年後
+          });
           
           resolve({
-            url: publicUrl,
+            url: signedUrl,
             fileName: fileName,
             originalName: file.originalname,
             contentType: file.mimetype,
             size: file.size
           });
         } catch (error) {
-          console.error('Error making file public:', error);
+          console.error('Error generating signed URL:', error);
           reject(error);
         }
       });
@@ -95,12 +97,19 @@ async function deleteFile(fileUrl) {
     }
 
     // URLからファイル名を抽出
-    const urlParts = fileUrl.split('/');
-    const fileName = urlParts.slice(urlParts.indexOf(bucket.name) + 1).join('/');
+    // 署名付きURLの場合、クエリパラメータを除去
+    let urlToParse = fileUrl.split('?')[0]; // クエリパラメータを除去
+    const urlParts = urlToParse.split('/');
+    const bucketIndex = urlParts.findIndex(part => part === bucket.name);
     
-    if (fileName) {
-      await bucket.file(fileName).delete();
-      console.log(`File deleted: ${fileName}`);
+    if (bucketIndex >= 0 && bucketIndex < urlParts.length - 1) {
+      const fileName = urlParts.slice(bucketIndex + 1).join('/');
+      if (fileName) {
+        await bucket.file(fileName).delete();
+        console.log(`File deleted: ${fileName}`);
+      }
+    } else {
+      console.warn(`Could not extract file name from URL: ${fileUrl}`);
     }
   } catch (error) {
     console.error('Error deleting file:', error);
