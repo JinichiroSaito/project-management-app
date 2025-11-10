@@ -34,6 +34,18 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id]);
+  
+  // プロジェクト情報が更新された場合、フォームデータも更新
+  useEffect(() => {
+    if (project) {
+      setFormData({
+        name: project.name || '',
+        description: project.description || '',
+        requested_amount: project.requested_amount || '',
+        reviewer_id: project.reviewer_id || ''
+      });
+    }
+  }, [project]);
 
   const fetchReviewers = async () => {
     try {

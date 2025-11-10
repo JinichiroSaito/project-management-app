@@ -113,19 +113,22 @@ const ProjectList = () => {
       fetchProjects();
     }
     
-    // その後、データベース反映を待って再度取得
-    setTimeout(() => {
-      if (isExecutor) {
-        console.log('[ProjectList] Refreshing my projects after delay...', {
-          userInfoId: userInfo?.id,
-          userInfoEmail: userInfo?.email
-        });
-        fetchMyProjects();
-      } else {
-        console.log('[ProjectList] Refreshing all projects after delay...');
-        fetchProjects();
-      }
-    }, 3000); // 3秒待つ（データベース反映とテキスト抽出や評価の処理が完了するのを待つ）
+    // その後、データベース反映を待って再度取得（複数回試行）
+    const retryCount = 3;
+    for (let i = 1; i <= retryCount; i++) {
+      setTimeout(() => {
+        if (isExecutor) {
+          console.log(`[ProjectList] Refreshing my projects after delay (attempt ${i}/${retryCount})...`, {
+            userInfoId: userInfo?.id,
+            userInfoEmail: userInfo?.email
+          });
+          fetchMyProjects();
+        } else {
+          console.log(`[ProjectList] Refreshing all projects after delay (attempt ${i}/${retryCount})...`);
+          fetchProjects();
+        }
+      }, i * 2000); // 2秒、4秒、6秒後に取得を試行
+    }
   };
 
   const handleDeleteProject = async (id) => {
