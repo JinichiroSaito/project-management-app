@@ -441,6 +441,50 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
         name: result.rows[0].name,
         executor_id: result.rows[0].executor_id
       });
+      
+      // ファイルがアップロードされている場合、自動的にテキスト抽出と評価を実行
+      if (fileInfo?.url) {
+        console.log('[Project Create] File uploaded, starting automatic text extraction and evaluation...');
+        const projectId = result.rows[0].id;
+        const fileUrl = fileInfo.url;
+        const fileType = fileInfo.contentType;
+        
+        // 非同期でテキスト抽出と評価を実行（エラーが発生してもプロジェクト作成は成功とする）
+        (async () => {
+          try {
+            // テキスト抽出
+            console.log(`[Project Create] Extracting text from file for project ${projectId}...`);
+            const extractedText = await extractTextFromFile(fileUrl, fileType);
+            
+            // データベースに保存
+            await db.query(
+              `UPDATE projects 
+               SET extracted_text = $1, 
+                   extracted_text_updated_at = CURRENT_TIMESTAMP
+               WHERE id = $2`,
+              [extractedText, projectId]
+            );
+            console.log(`[Project Create] Text extracted and saved for project ${projectId}`);
+            
+            // 評価を実行
+            console.log(`[Project Create] Checking missing sections for project ${projectId}...`);
+            const analysisResult = await checkMissingSections(extractedText);
+            
+            // データベースに保存
+            await db.query(
+              `UPDATE projects 
+               SET missing_sections = $1, 
+                   missing_sections_updated_at = CURRENT_TIMESTAMP
+               WHERE id = $2`,
+              [JSON.stringify(analysisResult), projectId]
+            );
+            console.log(`[Project Create] Evaluation completed and saved for project ${projectId}`);
+          } catch (autoProcessError) {
+            console.error(`[Project Create] Error in automatic text extraction/evaluation for project ${projectId}:`, autoProcessError);
+            // エラーが発生してもプロジェクト作成は成功とする（ログのみ出力）
+          }
+        })();
+      }
     } catch (insertError) {
       // ファイルアップロードに失敗した場合、アップロードしたファイルを削除
       if (fileInfo) {
@@ -613,6 +657,50 @@ app.put('/api/projects/:id', authenticateToken, upload.single('applicationFile')
       // 新しいファイルがアップロードされた場合、古いファイルを削除
       if (fileInfo && oldFileUrl) {
         await deleteFile(oldFileUrl);
+      }
+      
+      // 新しいファイルがアップロードされている場合、自動的にテキスト抽出と評価を実行
+      if (fileInfo?.url) {
+        console.log('[Project Update] New file uploaded, starting automatic text extraction and evaluation...');
+        const projectId = id;
+        const fileUrl = fileInfo.url;
+        const fileType = fileInfo.contentType;
+        
+        // 非同期でテキスト抽出と評価を実行（エラーが発生してもプロジェクト更新は成功とする）
+        (async () => {
+          try {
+            // テキスト抽出
+            console.log(`[Project Update] Extracting text from file for project ${projectId}...`);
+            const extractedText = await extractTextFromFile(fileUrl, fileType);
+            
+            // データベースに保存
+            await db.query(
+              `UPDATE projects 
+               SET extracted_text = $1, 
+                   extracted_text_updated_at = CURRENT_TIMESTAMP
+               WHERE id = $2`,
+              [extractedText, projectId]
+            );
+            console.log(`[Project Update] Text extracted and saved for project ${projectId}`);
+            
+            // 評価を実行
+            console.log(`[Project Update] Checking missing sections for project ${projectId}...`);
+            const analysisResult = await checkMissingSections(extractedText);
+            
+            // データベースに保存
+            await db.query(
+              `UPDATE projects 
+               SET missing_sections = $1, 
+                   missing_sections_updated_at = CURRENT_TIMESTAMP
+               WHERE id = $2`,
+              [JSON.stringify(analysisResult), projectId]
+            );
+            console.log(`[Project Update] Evaluation completed and saved for project ${projectId}`);
+          } catch (autoProcessError) {
+            console.error(`[Project Update] Error in automatic text extraction/evaluation for project ${projectId}:`, autoProcessError);
+            // エラーが発生してもプロジェクト更新は成功とする（ログのみ出力）
+          }
+        })();
       }
     } catch (updateError) {
       // 新しいファイルをアップロードしたが、更新に失敗した場合、アップロードしたファイルを削除
