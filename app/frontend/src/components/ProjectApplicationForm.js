@@ -234,24 +234,15 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
   const amountCategory = getAmountCategory(formData.requested_amount);
   
   const getRequiredKpiReportTypes = () => {
-    if (!amountCategory) return [];
-    switch (amountCategory) {
-      case 'under_100m':
-        return ['external_mvp'];
-      case '100m_to_500m':
-        return ['internal_mvp', 'external_mvp'];
-      case 'over_500m':
-        return ['internal_mvp', 'external_mvp'];
-      default:
-        return [];
-    }
+    // 社内MVP開発と社外MVP開発の機能は削除
+    return [];
   };
 
   const requiredReportTypes = getRequiredKpiReportTypes();
   const existingReportTypes = kpiReports.map(r => r.report_type);
   const reportingRequirements = {
-    under_100m: t('projectApplication.reportingRequirement.under100m', 'External MVP development and verification: Set KPIs and report results'),
-    '100m_to_500m': t('projectApplication.reportingRequirement.100mTo500m', 'Internal MVP development and external MVP development: Set KPIs for each and report'),
+    under_100m: null, // 社内MVP開発と社外MVP開発の機能は削除
+    '100m_to_500m': null, // 社内MVP開発と社外MVP開発の機能は削除
     over_500m: t('projectApplication.reportingRequirement.over500m', 'Semi-annual: Set KPIs and budget, report usage and results once. Also required to apply for next year budget at year-end')
   };
 
@@ -723,8 +714,6 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
                           }}
                           className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-md text-sm font-medium"
                         >
-                          {type === 'external_mvp' && t('kpi.externalMvp', 'External MVP')}
-                          {type === 'internal_mvp' && t('kpi.internalMvp', 'Internal MVP')}
                           {type === 'semi_annual' && t('kpi.semiAnnual', 'Semi-Annual')}
                           {' '}+ {t('kpi.addReport', 'Add')}
                         </button>
@@ -756,8 +745,6 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
                       <div className="flex justify-between items-start mb-2">
                         <div>
                           <h4 className="font-medium text-gray-900">
-                            {report.report_type === 'external_mvp' && t('kpi.externalMvp', 'External MVP Development')}
-                            {report.report_type === 'internal_mvp' && t('kpi.internalMvp', 'Internal MVP Development')}
                             {report.report_type === 'semi_annual' && t('kpi.semiAnnual', 'Semi-Annual Report')}
                           </h4>
                           <span className={`text-xs px-2 py-1 rounded-full ${

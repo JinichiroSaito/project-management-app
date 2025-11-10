@@ -129,9 +129,8 @@ const ProjectKpiReports = ({ project }) => {
               <div className="flex justify-between items-start mb-2">
                 <div>
                   <h4 className="font-medium text-gray-900">
-                    {report.report_type === 'external_mvp' && t('kpi.externalMvp', 'External MVP Development')}
-                    {report.report_type === 'internal_mvp' && t('kpi.internalMvp', 'Internal MVP Development')}
                     {report.report_type === 'semi_annual' && t('kpi.semiAnnual', 'Semi-Annual Report')}
+                    {report.report_type !== 'semi_annual' && report.report_type}
                   </h4>
                   <span className={`text-xs px-2 py-1 rounded-full mt-1 inline-block ${
                     report.status === 'submitted' ? 'bg-green-100 text-green-800' :
