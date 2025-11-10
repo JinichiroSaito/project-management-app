@@ -45,18 +45,36 @@ const ProjectList = () => {
     try {
       setLoading(true);
       setError('');
-      console.log('[ProjectList] Fetching my projects...', { isExecutor, userInfo, userId: userInfo?.id });
+      console.log('[ProjectList] Fetching my projects...', { 
+        isExecutor, 
+        userInfo, 
+        userId: userInfo?.id,
+        userEmail: userInfo?.email 
+      });
       const response = await api.get('/api/projects/my');
       console.log('[ProjectList] API response:', response);
       console.log('[ProjectList] Fetched projects data:', response.data);
       const projectsList = response.data.projects || [];
       console.log('[ProjectList] Projects list:', projectsList);
       console.log('[ProjectList] Number of projects:', projectsList.length);
+      
+      // プロジェクトのexecutor_idを確認
+      if (projectsList.length > 0) {
+        console.log('[ProjectList] First project executor_id:', projectsList[0].executor_id, 'Current userInfo.id:', userInfo?.id);
+        projectsList.forEach((p, index) => {
+          console.log(`[ProjectList] Project ${index}: id=${p.id}, name=${p.name}, executor_id=${p.executor_id}`);
+        });
+      }
+      
       setProjects(projectsList);
       setLoading(false);
       
       if (projectsList.length === 0) {
-        console.warn('[ProjectList] No projects found for executor:', userInfo?.id);
+        console.warn('[ProjectList] No projects found for executor:', {
+          userId: userInfo?.id,
+          userEmail: userInfo?.email,
+          position: userInfo?.position
+        });
       }
     } catch (error) {
       console.error('Error fetching my projects:', error);
@@ -72,20 +90,29 @@ const ProjectList = () => {
   };
 
   const handleFormComplete = () => {
-    console.log('[ProjectList] handleFormComplete called', { isExecutor, userInfo, userInfoId: userInfo?.id });
+    console.log('[ProjectList] handleFormComplete called', { 
+      isExecutor, 
+      userInfo, 
+      userInfoId: userInfo?.id,
+      userInfoEmail: userInfo?.email 
+    });
     setShowForm(false);
     setEditingProject(null);
     
-    // 少し待ってからプロジェクト一覧を更新（非同期処理が完了するのを待つ）
+    // プロジェクト一覧を更新（データベース反映を待つため、少し待機）
+    // プロジェクト作成→データベース反映→一覧取得の順序を保証
     setTimeout(() => {
       if (isExecutor) {
-        console.log('[ProjectList] Refreshing my projects after delay...');
+        console.log('[ProjectList] Refreshing my projects after delay...', {
+          userInfoId: userInfo?.id,
+          userInfoEmail: userInfo?.email
+        });
         fetchMyProjects();
       } else {
         console.log('[ProjectList] Refreshing all projects after delay...');
         fetchProjects();
       }
-    }, 1000); // 1秒待つ（テキスト抽出や評価の処理が完了するのを待つ）
+    }, 2000); // 2秒待つ（データベース反映とテキスト抽出や評価の処理が完了するのを待つ）
   };
 
   const handleDeleteProject = async (id) => {

@@ -113,10 +113,9 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
         
         if (onComplete) {
           console.log('[ProjectApplicationForm] Calling onComplete callback');
-          // 少し待ってからonCompleteを呼び出す（バックエンドの処理が完了するのを待つ）
-          setTimeout(() => {
-            onComplete();
-          }, 500);
+          // プロジェクト作成が完了したら即座にonCompleteを呼び出す
+          // 一覧更新の待機時間はhandleFormCompleteで制御する
+          onComplete();
         } else {
           console.warn('[ProjectApplicationForm] onComplete callback not provided');
         }
