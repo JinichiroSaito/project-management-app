@@ -534,10 +534,17 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
     }
     
     // レスポンスを返す前に、作成されたプロジェクトを再度取得して確実に返す
+    // 少し待機してから取得（トランザクションのコミットを待つ）
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     const createdProject = await db.query(
       `SELECT p.*, 
               u1.name as executor_name, u1.email as executor_email,
-              u2.name as reviewer_name, u2.email as reviewer_email
+              u2.name as reviewer_name, u2.email as reviewer_email,
+              p.extracted_text,
+              p.extracted_text_updated_at,
+              p.missing_sections,
+              p.missing_sections_updated_at
        FROM projects p
        LEFT JOIN users u1 ON p.executor_id = u1.id
        LEFT JOIN users u2 ON p.reviewer_id = u2.id
@@ -545,16 +552,37 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
       [result.rows[0].id]
     );
     
+    if (createdProject.rows.length === 0) {
+      console.error('[Project Create] ERROR: Created project not found after insert!', {
+        insertedId: result.rows[0].id,
+        executorId: executorId
+      });
+      // フォールバック: INSERT結果を返す
+      return res.status(201).json({
+        ...result.rows[0],
+        created_by: req.user.email
+      });
+    }
+    
     console.log('[Project Create] Returning created project:', {
       id: createdProject.rows[0].id,
       executor_id: createdProject.rows[0].executor_id,
-      executor_name: createdProject.rows[0].executor_name
+      executor_id_type: typeof createdProject.rows[0].executor_id,
+      executor_name: createdProject.rows[0].executor_name,
+      executor_email: createdProject.rows[0].executor_email,
+      expected_executor_id: executorId,
+      expected_executor_id_type: typeof executorId,
+      match: createdProject.rows[0].executor_id === executorId || createdProject.rows[0].executor_id === parseInt(executorId)
     });
     
-    res.status(201).json({
+    // executor_idの型を確認（数値として確実に返す）
+    const projectData = {
       ...createdProject.rows[0],
+      executor_id: parseInt(createdProject.rows[0].executor_id), // 数値型に変換
       created_by: req.user.email
-    });
+    };
+    
+    res.status(201).json(projectData);
   } catch (error) {
     return handleError(res, error, 'Create Project');
   }

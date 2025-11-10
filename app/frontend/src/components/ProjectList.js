@@ -201,11 +201,46 @@ const ProjectList = () => {
           project={editingProject}
           onComplete={(savedProject) => {
             console.log('[ProjectList] onComplete called with project:', savedProject);
+            console.log('[ProjectList] Current projects before update:', projects);
+            console.log('[ProjectList] Current userInfo:', userInfo);
+            
             // 保存されたプロジェクト情報でeditingProjectを更新
             if (savedProject) {
+              console.log('[ProjectList] Adding saved project to list directly');
+              console.log('[ProjectList] Saved project executor_id:', savedProject.executor_id);
+              console.log('[ProjectList] Current userInfo.id:', userInfo?.id);
+              
+              // 保存されたプロジェクトを直接一覧に追加（executor_idが一致する場合のみ）
+              if (savedProject.executor_id === userInfo?.id || savedProject.executor_id === parseInt(userInfo?.id)) {
+                console.log('[ProjectList] Executor ID matches, adding project to list');
+                // 既存のプロジェクトを確認（重複を避ける）
+                const existingIndex = projects.findIndex(p => p.id === savedProject.id);
+                if (existingIndex >= 0) {
+                  // 既に存在する場合は更新
+                  const updatedProjects = [...projects];
+                  updatedProjects[existingIndex] = savedProject;
+                  setProjects(updatedProjects);
+                  console.log('[ProjectList] Updated existing project in list');
+                } else {
+                  // 新規の場合は先頭に追加
+                  setProjects([savedProject, ...projects]);
+                  console.log('[ProjectList] Added new project to list');
+                }
+              } else {
+                console.warn('[ProjectList] Executor ID mismatch!', {
+                  savedProjectExecutorId: savedProject.executor_id,
+                  userInfoId: userInfo?.id,
+                  types: {
+                    savedProjectExecutorId: typeof savedProject.executor_id,
+                    userInfoId: typeof userInfo?.id
+                  }
+                });
+              }
+              
               setEditingProject(savedProject);
               setShowForm(false);
-              // プロジェクト一覧を更新
+              
+              // プロジェクト一覧を更新（バックエンドから最新情報を取得）
               setTimeout(() => {
                 if (isExecutor) {
                   fetchMyProjects();
