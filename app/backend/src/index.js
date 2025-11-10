@@ -169,6 +169,8 @@ app.get('/api/projects', optionalAuth, async (req, res) => {
 // Get my projects (executor only) - このルートを /api/projects/:id より前に定義する必要がある
 app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res) => {
   try {
+    console.log('[My Projects] Request received', { email: req.user.email });
+    
     // 現在のユーザー情報を取得
     const currentUser = await db.query(
       'SELECT id, position FROM users WHERE email = $1',
@@ -176,12 +178,19 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
     );
     
     if (currentUser.rows.length === 0) {
+      console.error('[My Projects] User not found:', req.user.email);
       return res.status(404).json({ error: 'User not found' });
     }
     
+    console.log('[My Projects] Current user:', currentUser.rows[0]);
+    
     // 実行者であることを確認
     if (currentUser.rows[0].position !== 'executor') {
-      return res.status(403).json({ error: 'Only project executors can access this endpoint' });
+      console.warn('[My Projects] User is not executor:', currentUser.rows[0].position);
+      return res.status(403).json({ 
+        error: 'Only project executors can access this endpoint',
+        userPosition: currentUser.rows[0].position
+      });
     }
     
     let result;
@@ -203,14 +212,30 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
         [currentUser.rows[0].id]
       );
     } catch (queryError) {
-      // 新しいカラムが存在しない場合（マイグレーション未実行）、空の配列を返す
-      console.warn('[My Projects] New columns not found, returning empty array:', queryError.message);
-      return res.json({ projects: [] });
+      // 新しいカラムが存在しない場合、従来のクエリを試行
+      console.warn('[My Projects] New columns not found, trying legacy query:', queryError.message);
+      try {
+        result = await db.query(
+          `SELECT p.*, 
+                  u1.name as executor_name, u1.email as executor_email,
+                  u2.name as reviewer_name, u2.email as reviewer_email
+           FROM projects p
+           LEFT JOIN users u1 ON p.executor_id = u1.id
+           LEFT JOIN users u2 ON p.reviewer_id = u2.id
+           WHERE p.executor_id = $1
+           ORDER BY p.created_at DESC`,
+          [currentUser.rows[0].id]
+        );
+      } catch (legacyError) {
+        console.error('[My Projects] Legacy query also failed:', legacyError.message);
+        return res.json({ projects: [] });
+      }
     }
     
-    console.log(`[My Projects] Fetched ${result.rows.length} projects for executor ${currentUser.rows[0].id}`);
+    console.log(`[My Projects] Fetched ${result.rows.length} projects for executor ${currentUser.rows[0].id} (${req.user.email})`);
     res.json({ projects: result.rows });
   } catch (error) {
+    console.error('[My Projects] Error:', error);
     return handleError(res, error, 'Fetch My Projects');
   }
 });

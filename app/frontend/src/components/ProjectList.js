@@ -18,13 +18,14 @@ const ProjectList = () => {
   const isExecutor = userInfo?.position === 'executor';
 
   useEffect(() => {
+    console.log('[ProjectList] useEffect triggered', { isExecutor, userInfo, user });
     if (isExecutor) {
       fetchMyProjects();
     } else {
       fetchProjects();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isExecutor]);
+  }, [isExecutor, userInfo]);
 
   const fetchProjects = async () => {
     try {
@@ -43,13 +44,20 @@ const ProjectList = () => {
   const fetchMyProjects = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/projects/my');
-      setProjects(response.data.projects || []);
       setError('');
+      console.log('[ProjectList] Fetching my projects...', { isExecutor, userInfo });
+      const response = await api.get('/api/projects/my');
+      console.log('[ProjectList] Fetched projects:', response.data);
+      setProjects(response.data.projects || []);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching my projects:', error);
-      const errorMessage = error.response?.data?.error || error.response?.data?.message || t('projects.error.fetch');
+      console.error('Error details:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message
+      });
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || t('projects.error.fetch');
       setError(errorMessage);
       setLoading(false);
     }
@@ -121,7 +129,12 @@ const ProjectList = () => {
 
       {error && (
         <div className="mb-4 rounded-md bg-red-50 p-4">
-          <p className="text-sm text-red-800">{error}</p>
+          <p className="text-sm text-red-800 font-medium">エラー: {error}</p>
+          {isExecutor && error.includes('executor') && (
+            <p className="text-xs text-red-600 mt-2">
+              ヒント: プロジェクトを作成するには、ユーザーのpositionが'executor'である必要があります。現在のpositionを確認してください。
+            </p>
+          )}
         </div>
       )}
 
@@ -273,9 +286,19 @@ const ProjectList = () => {
         ))}
       </div>
 
-      {projects.length === 0 && (
+      {projects.length === 0 && !loading && !error && (
         <div className="text-center py-12">
-          <p className="text-gray-500">{t('projects.noProjects')}</p>
+          <p className="text-gray-500 mb-4">{t('projects.noProjects', 'No projects found')}</p>
+          {isExecutor && (
+            <div className="mt-4">
+              <p className="text-sm text-gray-600 mb-2">
+                プロジェクトを作成するには、右上の「新規プロジェクト申請」ボタンをクリックしてください。
+              </p>
+              <p className="text-xs text-gray-500">
+                デバッグ情報: isExecutor={String(isExecutor)}, userInfo.position={userInfo?.position}
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
