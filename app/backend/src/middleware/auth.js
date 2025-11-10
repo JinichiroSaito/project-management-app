@@ -114,7 +114,12 @@ async function requireAdmin(req, res, next) {
     next();
   } catch (error) {
     console.error('Admin check error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production';
+    return res.status(500).json({ 
+      error: 'Internal server error',
+      message: isDevelopment ? error.message : undefined,
+      details: isDevelopment ? { stack: error.stack, code: error.code } : undefined
+    });
   }
 }
 
@@ -144,7 +149,12 @@ async function requireApproved(req, res, next) {
     next();
   } catch (error) {
     console.error('Approval check error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production';
+    return res.status(500).json({ 
+      error: 'Internal server error',
+      message: isDevelopment ? error.message : undefined,
+      details: isDevelopment ? { stack: error.stack, code: error.code } : undefined
+    });
   }
 }
 

@@ -21,6 +21,12 @@ if (process.env.RUN_MIGRATIONS === 'true') {
 // Middleware
 app.use(express.json());
 
+// リクエストログミドルウェア
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
+});
+
 // CORS設定
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -34,6 +40,42 @@ app.use((req, res, next) => {
   
   next();
 });
+
+// エラーハンドリングヘルパー関数
+function handleError(res, error, context = '') {
+  const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production';
+  
+  console.error(`[ERROR${context ? ` - ${context}` : ''}]`, {
+    message: error.message,
+    stack: error.stack,
+    code: error.code,
+    detail: error.detail,
+    hint: error.hint
+  });
+  
+  // データベースエラーの場合
+  if (error.code && error.code.startsWith('2')) {
+    return res.status(400).json({
+      error: 'Database error',
+      message: error.message,
+      details: isDevelopment ? {
+        code: error.code,
+        detail: error.detail,
+        hint: error.hint
+      } : undefined
+    });
+  }
+  
+  // その他のエラー
+  return res.status(500).json({
+    error: 'Internal server error',
+    message: isDevelopment ? error.message : undefined,
+    details: isDevelopment ? {
+      stack: error.stack,
+      code: error.code
+    } : undefined
+  });
+}
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -54,10 +96,22 @@ app.get('/health/db', async (req, res) => {
       timestamp: result.rows[0].now
     });
   } catch (error) {
+    console.error('[Health Check] Database connection error:', {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      hint: error.hint,
+      stack: error.stack
+    });
     res.status(500).json({
       status: 'unhealthy',
       database: 'disconnected',
-      error: error.message
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? {
+        code: error.code,
+        detail: error.detail,
+        hint: error.hint
+      } : undefined
     });
   }
 });
@@ -95,12 +149,7 @@ app.get('/api/projects', optionalAuth, async (req, res) => {
       user: req.user || null
     });
   } catch (error) {
-    console.error('Error fetching projects:', error);
-    console.error('Error details:', error.message, error.stack);
-    res.status(500).json({ 
-      error: 'Internal server error',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
+    return handleError(res, error, 'Fetch Projects');
   }
 });
 
@@ -145,8 +194,7 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
     console.log(`[My Projects] Fetched ${result.rows.length} projects for executor ${currentUser.rows[0].id}`);
     res.json({ projects: result.rows });
   } catch (error) {
-    console.error('Error fetching my projects:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Fetch My Projects');
   }
 });
 
@@ -190,8 +238,7 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
     
     res.json({ projects: result.rows });
   } catch (error) {
-    console.error('Error fetching pending review projects:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Fetch Pending Review Projects');
   }
 });
 
@@ -231,19 +278,29 @@ app.get('/api/projects/:id', optionalAuth, async (req, res) => {
     
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Error fetching project:', error);
-    console.error('Error details:', error.message, error.stack);
-    res.status(500).json({ 
-      error: 'Internal server error',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
+    return handleError(res, error, 'Fetch Project');
   }
 });
 
 // Protected endpoint - Create new project (application)
 app.post('/api/projects', authenticateToken, requireApproved, async (req, res) => {
   try {
-    const { name, description, requested_amount, reviewer_id } = req.body;
+    const { 
+      name, 
+      description, 
+      requested_amount, 
+      reviewer_id,
+      section_2_target_customers,
+      section_3_customer_problems,
+      section_4_solution_hypothesis,
+      section_5_differentiation,
+      section_6_market_potential,
+      section_7_revenue_model,
+      section_8_1_ideation_plan,
+      section_8_2_mvp_plan,
+      section_9_execution_plan,
+      section_10_strategic_alignment
+    } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
@@ -289,22 +346,58 @@ app.post('/api/projects', authenticateToken, requireApproved, async (req, res) =
     // 新しいカラムが存在するかチェックしてからINSERT
     let result;
     try {
-      // 新しいカラムが存在する場合のINSERT
+      // セクションカラムが存在する場合のINSERT
       result = await db.query(
-        'INSERT INTO projects (name, description, status, executor_id, reviewer_id, requested_amount, application_status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-        [name, description || '', 'planning', executorId, reviewer_id || null, requested_amount, 'draft']
+        `INSERT INTO projects (
+          name, description, status, executor_id, reviewer_id, requested_amount, application_status,
+          section_2_target_customers, section_3_customer_problems, section_4_solution_hypothesis,
+          section_5_differentiation, section_6_market_potential, section_7_revenue_model,
+          section_8_1_ideation_plan, section_8_2_mvp_plan, section_9_execution_plan, section_10_strategic_alignment
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING *`,
+        [
+          name, 
+          description || '', 
+          'planning', 
+          executorId, 
+          reviewer_id || null, 
+          requested_amount, 
+          'draft',
+          section_2_target_customers || null,
+          section_3_customer_problems || null,
+          section_4_solution_hypothesis || null,
+          section_5_differentiation || null,
+          section_6_market_potential || null,
+          section_7_revenue_model || null,
+          section_8_1_ideation_plan || null,
+          section_8_2_mvp_plan || null,
+          section_9_execution_plan || null,
+          section_10_strategic_alignment || null
+        ]
       );
     } catch (insertError) {
-      // 新しいカラムが存在しない場合（マイグレーション未実行）
+      // セクションカラムが存在しない場合、従来の形式でINSERT
       if (insertError.message && insertError.message.includes('column') && insertError.message.includes('does not exist')) {
-        console.error('[Project Create] Database migration required:', insertError.message);
-        return res.status(500).json({ 
-          error: 'Database migration required',
-          message: 'The projects table needs to be updated. Please run migration 004_project_application_schema.sql or contact an administrator.',
-          details: process.env.NODE_ENV === 'development' ? insertError.message : undefined
-        });
+        console.warn('[Project Create] Section columns not found, using legacy format');
+        try {
+          result = await db.query(
+            'INSERT INTO projects (name, description, status, executor_id, reviewer_id, requested_amount, application_status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [name, description || '', 'planning', executorId, reviewer_id || null, requested_amount, 'draft']
+          );
+        } catch (legacyError) {
+          // 従来のカラムも存在しない場合
+          if (legacyError.message && legacyError.message.includes('column') && legacyError.message.includes('does not exist')) {
+            console.error('[Project Create] Database migration required:', legacyError.message);
+            return res.status(500).json({ 
+              error: 'Database migration required',
+              message: 'The projects table needs to be updated. Please run migrations or contact an administrator.',
+              details: process.env.NODE_ENV === 'development' ? legacyError.message : undefined
+            });
+          }
+          throw legacyError;
+        }
+      } else {
+        throw insertError;
       }
-      throw insertError;
     }
     
     res.status(201).json({
@@ -312,12 +405,7 @@ app.post('/api/projects', authenticateToken, requireApproved, async (req, res) =
       created_by: req.user.email
     });
   } catch (error) {
-    console.error('Error creating project:', error);
-    console.error('Error details:', error.message, error.stack);
-    res.status(500).json({ 
-      error: 'Internal server error',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
+    return handleError(res, error, 'Create Project');
   }
 });
 
@@ -325,7 +413,24 @@ app.post('/api/projects', authenticateToken, requireApproved, async (req, res) =
 app.put('/api/projects/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, status, requested_amount, reviewer_id, application_status } = req.body;
+    const { 
+      name, 
+      description, 
+      status, 
+      requested_amount, 
+      reviewer_id, 
+      application_status,
+      section_2_target_customers,
+      section_3_customer_problems,
+      section_4_solution_hypothesis,
+      section_5_differentiation,
+      section_6_market_potential,
+      section_7_revenue_model,
+      section_8_1_ideation_plan,
+      section_8_2_mvp_plan,
+      section_9_execution_plan,
+      section_10_strategic_alignment
+    } = req.body;
     
     // プロジェクトの所有者を確認
     const currentUser = await db.query(
@@ -383,18 +488,58 @@ app.put('/api/projects/:id', authenticateToken, async (req, res) => {
       }
     }
     
-    const result = await db.query(
-      `UPDATE projects 
-       SET name = COALESCE($1, name), 
-           description = COALESCE($2, description), 
-           status = COALESCE($3, status),
-           requested_amount = COALESCE($4, requested_amount),
-           reviewer_id = COALESCE($5, reviewer_id),
-           application_status = COALESCE($6, application_status),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $7 RETURNING *`,
-      [name, description, status, requested_amount, reviewer_id, application_status, id]
-    );
+    // セクションカラムが存在するかチェックしてからUPDATE
+    let result;
+    try {
+      // セクションカラムが存在する場合のUPDATE
+      result = await db.query(
+        `UPDATE projects 
+         SET name = COALESCE($1, name), 
+             description = COALESCE($2, description), 
+             status = COALESCE($3, status),
+             requested_amount = COALESCE($4, requested_amount),
+             reviewer_id = COALESCE($5, reviewer_id),
+             application_status = COALESCE($6, application_status),
+             section_2_target_customers = COALESCE($7, section_2_target_customers),
+             section_3_customer_problems = COALESCE($8, section_3_customer_problems),
+             section_4_solution_hypothesis = COALESCE($9, section_4_solution_hypothesis),
+             section_5_differentiation = COALESCE($10, section_5_differentiation),
+             section_6_market_potential = COALESCE($11, section_6_market_potential),
+             section_7_revenue_model = COALESCE($12, section_7_revenue_model),
+             section_8_1_ideation_plan = COALESCE($13, section_8_1_ideation_plan),
+             section_8_2_mvp_plan = COALESCE($14, section_8_2_mvp_plan),
+             section_9_execution_plan = COALESCE($15, section_9_execution_plan),
+             section_10_strategic_alignment = COALESCE($16, section_10_strategic_alignment),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $17 RETURNING *`,
+        [
+          name, description, status, requested_amount, reviewer_id, application_status,
+          section_2_target_customers, section_3_customer_problems, section_4_solution_hypothesis,
+          section_5_differentiation, section_6_market_potential, section_7_revenue_model,
+          section_8_1_ideation_plan, section_8_2_mvp_plan, section_9_execution_plan, section_10_strategic_alignment,
+          id
+        ]
+      );
+    } catch (updateError) {
+      // セクションカラムが存在しない場合、従来の形式でUPDATE
+      if (updateError.message && updateError.message.includes('column') && updateError.message.includes('does not exist')) {
+        console.warn('[Project Update] Section columns not found, using legacy format');
+        result = await db.query(
+          `UPDATE projects 
+           SET name = COALESCE($1, name), 
+               description = COALESCE($2, description), 
+               status = COALESCE($3, status),
+               requested_amount = COALESCE($4, requested_amount),
+               reviewer_id = COALESCE($5, reviewer_id),
+               application_status = COALESCE($6, application_status),
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $7 RETURNING *`,
+          [name, description, status, requested_amount, reviewer_id, application_status, id]
+        );
+      } else {
+        throw updateError;
+      }
+    }
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Project not found' });
@@ -405,8 +550,7 @@ app.put('/api/projects/:id', authenticateToken, async (req, res) => {
       updated_by: req.user.email
     });
   } catch (error) {
-    console.error('Error updating project:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Update Project');
   }
 });
 
@@ -428,8 +572,7 @@ app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
       deleted_by: req.user.email
     });
   } catch (error) {
-    console.error('Error deleting project:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Delete Project');
   }
 });
 
@@ -461,8 +604,7 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching user info:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Fetch User Info');
   }
 });
 
@@ -517,9 +659,7 @@ app.post('/api/users/register', authenticateToken, async (req, res) => {
       message: 'User registered. Waiting for admin approval.'
     });
   } catch (error) {
-    console.error('[Register] Error registering user:', error);
-    console.error('[Register] Error stack:', error.stack);
-    res.status(500).json({ error: 'Internal server error', details: error.message });
+    return handleError(res, error, 'Register User');
   }
 });
 
@@ -540,8 +680,7 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
     
     res.json({ users: result.rows });
   } catch (error) {
-    console.error('Error fetching users:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Fetch Users');
   }
 });
 
@@ -576,8 +715,7 @@ app.get('/api/admin/users/pending', authenticateToken, requireAdmin, async (req,
     
     res.json({ users: result.rows });
   } catch (error) {
-    console.error('[Admin] Error fetching pending users:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Fetch Pending Users');
   }
 });
 
@@ -618,8 +756,7 @@ app.post('/api/admin/users/resend-approval-requests', authenticateToken, require
       failed: results.filter(r => r.status === 'failed').length
     });
   } catch (error) {
-    console.error('Error resending approval requests:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Resend Approval Requests');
   }
 });
 
@@ -651,8 +788,7 @@ app.post('/api/admin/users/:id/approve', authenticateToken, requireAdmin, async 
       message: 'User approved successfully'
     });
   } catch (error) {
-    console.error('Error approving user:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Approve User');
   }
 });
 
@@ -712,8 +848,7 @@ app.put('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, res
       message: 'User updated successfully'
     });
   } catch (error) {
-    console.error('Error updating user:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Update User');
   }
 });
 
@@ -769,8 +904,7 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, 
       deletedUser: result.rows[0]
     });
   } catch (error) {
-    console.error('[Delete] Error deleting user:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Delete User');
   }
 });
 
@@ -820,8 +954,7 @@ app.put('/api/users/profile', authenticateToken, async (req, res) => {
       message: 'Profile updated successfully'
   });
   } catch (error) {
-    console.error('Error updating profile:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Update Profile');
   }
 });
 
@@ -838,8 +971,7 @@ app.get('/api/users/reviewers', authenticateToken, requireApproved, async (req, 
     console.log(`[Reviewers] Fetched ${result.rows.length} reviewers`);
     res.json({ reviewers: result.rows });
   } catch (error) {
-    console.error('Error fetching reviewers:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Fetch Reviewers');
   }
 });
 
@@ -893,8 +1025,7 @@ app.post('/api/projects/:id/submit', authenticateToken, requireApproved, async (
       message: 'Project application submitted successfully'
     });
   } catch (error) {
-    console.error('Error submitting project application:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Submit Project Application');
   }
 });
 
@@ -963,8 +1094,7 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
       message: `Project application ${decision} successfully`
     });
   } catch (error) {
-    console.error('Error reviewing project application:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Review Project Application');
   }
 });
 
@@ -1023,8 +1153,7 @@ app.get('/api/projects/:id/kpi-reports', authenticateToken, requireApproved, asy
     
     res.json({ reports: result.rows });
   } catch (error) {
-    console.error('Error fetching KPI reports:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Fetch KPI Reports');
   }
 });
 
@@ -1106,8 +1235,7 @@ app.post('/api/projects/:id/kpi-reports', authenticateToken, requireApproved, as
     
     res.status(201).json({ report: result.rows[0] });
   } catch (error) {
-    console.error('Error creating KPI report:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Create KPI Report');
   }
 });
 
@@ -1208,8 +1336,7 @@ app.put('/api/projects/:id/kpi-reports/:reportId', authenticateToken, requireApp
     
     res.json({ report: result.rows[0] });
   } catch (error) {
-    console.error('Error updating KPI report:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Update KPI Report');
   }
 });
 
@@ -1249,15 +1376,39 @@ app.delete('/api/projects/:id/kpi-reports/:reportId', authenticateToken, require
     
     res.json({ message: 'KPI report deleted successfully' });
   } catch (error) {
-    console.error('Error deleting KPI report:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return handleError(res, error, 'Delete KPI Report');
   }
+});
+
+// グローバルエラーハンドラー（未処理のエラーをキャッチ）
+app.use((error, req, res, next) => {
+  console.error('[Unhandled Error]', {
+    message: error.message,
+    stack: error.stack,
+    path: req.path,
+    method: req.method
+  });
+  
+  if (!res.headersSent) {
+    return handleError(res, error, 'Unhandled Error');
+  }
+});
+
+// 404ハンドラー
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Not found',
+    path: req.path,
+    method: req.method
+  });
 });
 
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'dev'}`);
+  console.log(`Database: ${process.env.DB_HOST || 'not configured'}`);
+  console.log(`Firebase: ${process.env.FIREBASE_SERVICE_ACCOUNT ? 'configured' : 'not configured'}`);
 });
 
 // Graceful shutdown
