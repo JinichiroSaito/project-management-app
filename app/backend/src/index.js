@@ -135,7 +135,11 @@ app.get('/api/projects', optionalAuth, async (req, res) => {
       result = await db.query(
         `SELECT p.*, 
                 u1.name as executor_name, u1.email as executor_email,
-                u2.name as reviewer_name, u2.email as reviewer_email
+                u2.name as reviewer_name, u2.email as reviewer_email,
+                p.extracted_text,
+                p.extracted_text_updated_at,
+                p.missing_sections,
+                p.missing_sections_updated_at
          FROM projects p
          LEFT JOIN users u1 ON p.executor_id = u1.id
          LEFT JOIN users u2 ON p.reviewer_id = u2.id
@@ -186,7 +190,11 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
       result = await db.query(
         `SELECT p.*, 
                 u1.name as executor_name, u1.email as executor_email,
-                u2.name as reviewer_name, u2.email as reviewer_email
+                u2.name as reviewer_name, u2.email as reviewer_email,
+                p.extracted_text,
+                p.extracted_text_updated_at,
+                p.missing_sections,
+                p.missing_sections_updated_at
          FROM projects p
          LEFT JOIN users u1 ON p.executor_id = u1.id
          LEFT JOIN users u2 ON p.reviewer_id = u2.id
@@ -231,7 +239,11 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
       result = await db.query(
         `SELECT p.*, 
                 u1.name as executor_name, u1.email as executor_email,
-                u2.name as reviewer_name, u2.email as reviewer_email
+                u2.name as reviewer_name, u2.email as reviewer_email,
+                p.extracted_text,
+                p.extracted_text_updated_at,
+                p.missing_sections,
+                p.missing_sections_updated_at
          FROM projects p
          LEFT JOIN users u1 ON p.executor_id = u1.id
          LEFT JOIN users u2 ON p.reviewer_id = u2.id
@@ -261,7 +273,11 @@ app.get('/api/projects/:id', optionalAuth, async (req, res) => {
       result = await db.query(
         `SELECT p.*, 
                 u1.name as executor_name, u1.email as executor_email,
-                u2.name as reviewer_name, u2.email as reviewer_email
+                u2.name as reviewer_name, u2.email as reviewer_email,
+                p.extracted_text,
+                p.extracted_text_updated_at,
+                p.missing_sections,
+                p.missing_sections_updated_at
          FROM projects p
          LEFT JOIN users u1 ON p.executor_id = u1.id
          LEFT JOIN users u2 ON p.reviewer_id = u2.id

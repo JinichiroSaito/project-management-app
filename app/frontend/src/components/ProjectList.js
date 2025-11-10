@@ -180,6 +180,62 @@ const ProjectList = () => {
             <div className="text-xs text-gray-500">
               {t('projects.created')}: {new Date(project.created_at).toLocaleDateString()}
             </div>
+            
+            {/* 評価結果の表示 */}
+            {(() => {
+              if (!project.missing_sections) return null;
+              let missingSections = project.missing_sections;
+              if (typeof missingSections === 'string') {
+                try {
+                  missingSections = JSON.parse(missingSections);
+                } catch (e) {
+                  return null;
+                }
+              }
+              if (typeof missingSections !== 'object' || missingSections === null) return null;
+              
+              return (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">
+                      {t('projectApplication.analysis.completeness', 'Completeness Score')}
+                    </span>
+                    {missingSections.completeness_score !== undefined && (
+                      <span className={`text-sm font-bold ${
+                        missingSections.completeness_score >= 80 ? 'text-green-600' :
+                        missingSections.completeness_score >= 60 ? 'text-yellow-600' :
+                        'text-red-600'
+                      }`}>
+                        {missingSections.completeness_score}%
+                      </span>
+                    )}
+                  </div>
+                  {missingSections.completeness_score !== undefined && (
+                    <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                      <div
+                        className={`h-2 rounded-full ${
+                          missingSections.completeness_score >= 80 ? 'bg-green-600' :
+                          missingSections.completeness_score >= 60 ? 'bg-yellow-600' :
+                          'bg-red-600'
+                        }`}
+                        style={{ width: `${missingSections.completeness_score}%` }}
+                      />
+                    </div>
+                  )}
+                  {missingSections.missing_sections && missingSections.missing_sections.length > 0 && (
+                    <p className="text-xs text-yellow-600 mt-1">
+                      {t('projectApplication.analysis.missingSections', 'Missing Sections')}: {missingSections.missing_sections.length}
+                    </p>
+                  )}
+                  {missingSections.critical_issues && missingSections.critical_issues.length > 0 && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {t('projectApplication.analysis.criticalIssues', 'Critical Issues')}: {missingSections.critical_issues.length}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+            
             {isExecutor && project.executor_id === userInfo?.id && (
               <div className="mt-4 flex flex-col space-y-2">
                 <div className="flex space-x-2">

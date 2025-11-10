@@ -104,6 +104,141 @@ const ReviewDashboard = () => {
 
               <p className="text-sm text-gray-600 mb-4">{project.description}</p>
 
+              {/* 評価結果の表示 */}
+              {(() => {
+                if (!project.missing_sections) return null;
+                let missingSections = project.missing_sections;
+                if (typeof missingSections === 'string') {
+                  try {
+                    missingSections = JSON.parse(missingSections);
+                  } catch (e) {
+                    return null;
+                  }
+                }
+                if (typeof missingSections !== 'object' || missingSections === null) return null;
+                
+                return (
+                <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <h4 className="text-sm font-medium text-gray-900 mb-3">
+                    {t('projectApplication.analysis.title', 'Document Analysis')}
+                  </h4>
+                  
+                  {missingSections.completeness_score !== undefined && (
+                    <div className="mb-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">
+                          {t('projectApplication.analysis.completeness', 'Completeness Score')}
+                        </span>
+                        <span className={`text-lg font-bold ${
+                          missingSections.completeness_score >= 80 ? 'text-green-600' :
+                          missingSections.completeness_score >= 60 ? 'text-yellow-600' :
+                          'text-red-600'
+                        }`}>
+                          {missingSections.completeness_score}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full ${
+                            missingSections.completeness_score >= 80 ? 'bg-green-600' :
+                            missingSections.completeness_score >= 60 ? 'bg-yellow-600' :
+                            'bg-red-600'
+                          }`}
+                          style={{ width: `${missingSections.completeness_score}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {missingSections.category_scores && (
+                    <div className="mb-3">
+                      <h5 className="text-xs font-medium text-gray-700 mb-2">
+                        {t('projectApplication.analysis.categoryScores', 'Category Scores')}
+                      </h5>
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(missingSections.category_scores).slice(0, 6).map(([category, score]) => (
+                          <div key={category} className="text-xs">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-gray-600 truncate">{category}</span>
+                              <span className={`font-medium ml-1 ${
+                                score >= 80 ? 'text-green-600' :
+                                score >= 60 ? 'text-yellow-600' :
+                                'text-red-600'
+                              }`}>
+                                {score}%
+                              </span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-1">
+                              <div
+                                className={`h-1 rounded-full ${
+                                  score >= 80 ? 'bg-green-600' :
+                                  score >= 60 ? 'bg-yellow-600' :
+                                  'bg-red-600'
+                                }`}
+                                style={{ width: `${score}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {missingSections.missing_sections && missingSections.missing_sections.length > 0 && (
+                    <div className="mb-3 p-2 bg-yellow-50 rounded border border-yellow-200">
+                      <h5 className="text-xs font-medium text-yellow-900 mb-1">
+                        {t('projectApplication.analysis.missingSections', 'Missing Sections')}: {missingSections.missing_sections.length}
+                      </h5>
+                      <ul className="text-xs text-yellow-800 space-y-1">
+                        {missingSections.missing_sections.slice(0, 3).map((section, index) => (
+                          <li key={index}>
+                            {section.section_number}. {section.section_name}
+                            {section.is_missing && <span className="text-red-600 ml-1">(不足)</span>}
+                            {section.is_incomplete && <span className="text-orange-600 ml-1">(不完全)</span>}
+                          </li>
+                        ))}
+                        {missingSections.missing_sections.length > 3 && (
+                          <li className="text-gray-600">...他 {missingSections.missing_sections.length - 3}件</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {missingSections.critical_issues && missingSections.critical_issues.length > 0 && (
+                    <div className="mb-3 p-2 bg-red-50 rounded border border-red-200">
+                      <h5 className="text-xs font-medium text-red-900 mb-1">
+                        {t('projectApplication.analysis.criticalIssues', 'Critical Issues')}
+                      </h5>
+                      <ul className="text-xs text-red-800 space-y-1">
+                        {missingSections.critical_issues.slice(0, 2).map((issue, index) => (
+                          <li key={index} className="list-disc list-inside">{issue}</li>
+                        ))}
+                        {missingSections.critical_issues.length > 2 && (
+                          <li className="text-gray-600">...他 {missingSections.critical_issues.length - 2}件</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {missingSections.strengths && missingSections.strengths.length > 0 && (
+                    <div className="p-2 bg-green-50 rounded border border-green-200">
+                      <h5 className="text-xs font-medium text-green-900 mb-1">
+                        {t('projectApplication.analysis.strengths', 'Strengths')}
+                      </h5>
+                      <ul className="text-xs text-green-800 space-y-1">
+                        {missingSections.strengths.slice(0, 2).map((strength, index) => (
+                          <li key={index} className="list-disc list-inside">{strength}</li>
+                        ))}
+                        {missingSections.strengths.length > 2 && (
+                          <li className="text-gray-600">...他 {missingSections.strengths.length - 2}件</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                );
+              })()}
+
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <span className="text-sm font-medium text-gray-700">
