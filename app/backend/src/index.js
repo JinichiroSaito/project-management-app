@@ -385,9 +385,19 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
     
     // ファイルアップロード処理
     let fileInfo = null;
+    console.log('[Project Create] File upload check:', {
+      hasFile: !!req.file,
+      fileName: req.file?.originalname,
+      fileSize: req.file?.size,
+      fileType: req.file?.mimetype,
+      bodyKeys: Object.keys(req.body)
+    });
+    
     if (req.file) {
       try {
+        console.log('[Project Create] Uploading file to Cloud Storage...');
         fileInfo = await uploadFile(req.file, null, executorId.toString());
+        console.log('[Project Create] File uploaded successfully:', fileInfo);
       } catch (uploadError) {
         console.error('[Project Create] File upload failed:', uploadError);
         return res.status(500).json({ 
@@ -395,6 +405,8 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
           message: uploadError.message
         });
       }
+    } else {
+      console.warn('[Project Create] No file received in req.file');
     }
     
     // プロジェクトを作成
@@ -533,12 +545,22 @@ app.put('/api/projects/:id', authenticateToken, upload.single('applicationFile')
     // ファイルアップロード処理（新しいファイルがアップロードされた場合）
     let fileInfo = null;
     let oldFileUrl = null;
+    console.log('[Project Update] File upload check:', {
+      hasFile: !!req.file,
+      fileName: req.file?.originalname,
+      fileSize: req.file?.size,
+      fileType: req.file?.mimetype,
+      bodyKeys: Object.keys(req.body)
+    });
+    
     if (req.file) {
       // 既存のファイルがあれば削除対象として記録
       oldFileUrl = projectData.application_file_url;
       
       try {
+        console.log('[Project Update] Uploading file to Cloud Storage...');
         fileInfo = await uploadFile(req.file, id.toString(), currentUser.rows[0].id.toString());
+        console.log('[Project Update] File uploaded successfully:', fileInfo);
       } catch (uploadError) {
         console.error('[Project Update] File upload failed:', uploadError);
         return res.status(500).json({ 
@@ -546,6 +568,8 @@ app.put('/api/projects/:id', authenticateToken, upload.single('applicationFile')
           message: uploadError.message
         });
       }
+    } else {
+      console.warn('[Project Update] No file received in req.file');
     }
     
     // ファイルアップロードカラムが存在するかチェックしてからUPDATE

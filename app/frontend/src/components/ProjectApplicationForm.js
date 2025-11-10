@@ -64,16 +64,35 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
         formDataToSend.append('reviewer_id', formData.reviewer_id);
       }
       
+      console.log('[ProjectApplicationForm] Submitting form:', {
+        hasSelectedFile: !!selectedFile,
+        fileName: selectedFile?.name,
+        fileSize: selectedFile?.size,
+        fileType: selectedFile?.type,
+        projectId: project?.id
+      });
+      
       if (selectedFile) {
         formDataToSend.append('applicationFile', selectedFile);
+        console.log('[ProjectApplicationForm] File added to FormData:', {
+          name: selectedFile.name,
+          size: selectedFile.size,
+          type: selectedFile.type
+        });
+      } else {
+        console.warn('[ProjectApplicationForm] No file selected');
       }
 
       if (project) {
         // 更新
-        await api.put(`/api/projects/${project.id}`, formDataToSend);
+        console.log('[ProjectApplicationForm] Updating project:', project.id);
+        const response = await api.put(`/api/projects/${project.id}`, formDataToSend);
+        console.log('[ProjectApplicationForm] Update response:', response.data);
       } else {
         // 新規作成
-        await api.post('/api/projects', formDataToSend);
+        console.log('[ProjectApplicationForm] Creating new project');
+        const response = await api.post('/api/projects', formDataToSend);
+        console.log('[ProjectApplicationForm] Create response:', response.data);
       }
       
       if (onComplete) {
@@ -81,6 +100,11 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
       }
     } catch (error) {
       console.error('Error saving project application:', error);
+      console.error('Error details:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message
+      });
       const errorMessage = error.response?.data?.message || error.response?.data?.error || t('projectApplication.error.save', 'Failed to save project application');
       setError(errorMessage);
       
