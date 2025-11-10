@@ -24,16 +24,35 @@ async function downloadFileFromStorage(fileUrl) {
       projectId: process.env.GOOGLE_CLOUD_PROJECT || process.env.PROJECT_ID || 'saito-test-gcp'
     });
     
+    // 署名付きURLの場合、クエリパラメータを除去してからパース
+    // または、直接HTTPリクエストでダウンロード
+    let urlToParse = fileUrl.split('?')[0]; // クエリパラメータを除去
+    
     // URLからバケット名とファイルパスを抽出
-    const urlParts = fileUrl.replace('https://storage.googleapis.com/', '').split('/');
-    const bucketName = urlParts[0];
-    const fileName = urlParts.slice(1).join('/');
+    // https://storage.googleapis.com/bucket-name/path/to/file の形式
+    const urlMatch = urlToParse.match(/https:\/\/storage\.googleapis\.com\/([^\/]+)\/(.+)/);
     
-    const bucket = storage.bucket(bucketName);
-    const file = bucket.file(fileName);
-    
-    const [buffer] = await file.download();
-    return buffer;
+    if (urlMatch) {
+      const bucketName = urlMatch[1];
+      const fileName = urlMatch[2];
+      
+      const bucket = storage.bucket(bucketName);
+      const file = bucket.file(fileName);
+      
+      const [buffer] = await file.download();
+      return buffer;
+    } else {
+      // 署名付きURLの場合は、直接HTTPリクエストでダウンロード
+      const https = require('https');
+      return new Promise((resolve, reject) => {
+        https.get(fileUrl, (res) => {
+          const chunks = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () => resolve(Buffer.concat(chunks)));
+          res.on('error', reject);
+        }).on('error', reject);
+      });
+    }
   } catch (error) {
     console.error('Error downloading file from Storage:', error);
     throw error;
