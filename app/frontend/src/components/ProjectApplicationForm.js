@@ -98,30 +98,38 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
       
       // 保存成功を確認
       if (response && (response.status === 200 || response.status === 201)) {
-        console.log('[ProjectApplicationForm] Save successful, calling onComplete');
+        console.log('[ProjectApplicationForm] Save successful');
         console.log('[ProjectApplicationForm] Saved project data:', response.data);
         console.log('[ProjectApplicationForm] Project executor_id:', response.data?.executor_id);
         
-        // 新規作成の場合、projectオブジェクトを更新
+        // 新規作成の場合、projectオブジェクトを更新してフォームを継続表示
         if (!project && response.data) {
           console.log('[ProjectApplicationForm] New project created:', {
             id: response.data.id,
             name: response.data.name,
             executor_id: response.data.executor_id
           });
+          
+          // プロジェクト情報を更新（フォームを継続表示するため）
+          // 親コンポーネントにプロジェクト情報を渡す必要がある
+          // ここでは、onCompleteにプロジェクト情報を渡す
+          if (onComplete) {
+            console.log('[ProjectApplicationForm] Calling onComplete with new project data');
+            // プロジェクト情報を渡してonCompleteを呼び出す
+            onComplete(response.data);
+          } else {
+            console.warn('[ProjectApplicationForm] onComplete callback not provided');
+          }
+        } else {
+          // 更新の場合
+          if (onComplete) {
+            console.log('[ProjectApplicationForm] Calling onComplete callback for update');
+            onComplete(response.data);
+          }
         }
         
         // 保存成功メッセージを表示
         alert(t('projectApplication.saved', 'Project saved successfully'));
-        
-        if (onComplete) {
-          console.log('[ProjectApplicationForm] Calling onComplete callback');
-          // プロジェクト作成が完了したら即座にonCompleteを呼び出す
-          // 一覧更新の待機時間はhandleFormCompleteで制御する
-          onComplete();
-        } else {
-          console.warn('[ProjectApplicationForm] onComplete callback not provided');
-        }
       } else {
         console.error('[ProjectApplicationForm] Unexpected response status:', response?.status);
         setError(t('projectApplication.error.save', 'Failed to save project application'));

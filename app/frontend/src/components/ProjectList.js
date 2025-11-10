@@ -196,7 +196,24 @@ const ProjectList = () => {
       {(showForm || editingProject) && isExecutor && (
         <ProjectApplicationForm
           project={editingProject}
-          onComplete={handleFormComplete}
+          onComplete={(savedProject) => {
+            console.log('[ProjectList] onComplete called with project:', savedProject);
+            // 保存されたプロジェクト情報でeditingProjectを更新
+            if (savedProject) {
+              setEditingProject(savedProject);
+              setShowForm(false);
+              // プロジェクト一覧を更新
+              setTimeout(() => {
+                if (isExecutor) {
+                  fetchMyProjects();
+                } else {
+                  fetchProjects();
+                }
+              }, 1000);
+            } else {
+              handleFormComplete();
+            }
+          }}
           onCancel={() => {
             setShowForm(false);
             setEditingProject(null);

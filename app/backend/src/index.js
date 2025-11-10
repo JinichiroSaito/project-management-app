@@ -533,8 +533,26 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
       }
     }
     
+    // レスポンスを返す前に、作成されたプロジェクトを再度取得して確実に返す
+    const createdProject = await db.query(
+      `SELECT p.*, 
+              u1.name as executor_name, u1.email as executor_email,
+              u2.name as reviewer_name, u2.email as reviewer_email
+       FROM projects p
+       LEFT JOIN users u1 ON p.executor_id = u1.id
+       LEFT JOIN users u2 ON p.reviewer_id = u2.id
+       WHERE p.id = $1`,
+      [result.rows[0].id]
+    );
+    
+    console.log('[Project Create] Returning created project:', {
+      id: createdProject.rows[0].id,
+      executor_id: createdProject.rows[0].executor_id,
+      executor_name: createdProject.rows[0].executor_name
+    });
+    
     res.status(201).json({
-      ...result.rows[0],
+      ...createdProject.rows[0],
       created_by: req.user.email
     });
   } catch (error) {
