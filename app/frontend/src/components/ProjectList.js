@@ -237,17 +237,22 @@ const ProjectList = () => {
                 });
               }
               
+              // 保存されたプロジェクト情報でeditingProjectを更新（フォームを継続表示）
               setEditingProject(savedProject);
-              setShowForm(false);
+              // フォームは閉じない（下書保存のため）
+              // setShowForm(false); を削除
               
-              // プロジェクト一覧を更新（バックエンドから最新情報を取得）
-              setTimeout(() => {
-                if (isExecutor) {
-                  fetchMyProjects();
-                } else {
-                  fetchProjects();
-                }
-              }, 1000);
+              // プロジェクト一覧を即座に更新（バックエンドから最新情報を取得）
+              // 複数回試行して確実に取得
+              if (isExecutor) {
+                fetchMyProjects();
+                setTimeout(() => fetchMyProjects(), 500);
+                setTimeout(() => fetchMyProjects(), 2000);
+              } else {
+                fetchProjects();
+                setTimeout(() => fetchProjects(), 500);
+                setTimeout(() => fetchProjects(), 2000);
+              }
             } else {
               handleFormComplete();
             }
