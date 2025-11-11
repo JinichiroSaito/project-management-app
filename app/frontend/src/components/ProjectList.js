@@ -309,6 +309,62 @@ const ProjectList = () => {
               {t('projects.created')}: {new Date(project.created_at).toLocaleDateString()}
             </div>
             
+            {/* ファイルアップロード情報 */}
+            {project.application_file_name && (
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <div className="text-xs text-gray-600 mb-2">
+                  <span className="font-medium">{t('projectApplication.uploadedFile', 'Uploaded File')}: </span>
+                  {project.application_file_name}
+                </div>
+                {project.application_file_url && (
+                  <div className="flex space-x-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const response = await api.post(`/api/projects/${project.id}/extract-text`);
+                          alert(t('projectApplication.textExtracted', 'Text extracted successfully. Please check the project details.'));
+                          // プロジェクト一覧を更新
+                          if (isExecutor) {
+                            fetchMyProjects();
+                          } else {
+                            fetchProjects();
+                          }
+                        } catch (error) {
+                          console.error('Error extracting text:', error);
+                          alert(error.response?.data?.error || t('projectApplication.error.extractText', 'Failed to extract text'));
+                        }
+                      }}
+                      className="px-3 py-1 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700"
+                    >
+                      {t('projectApplication.analysis.extract', 'Extract Text with Gemini')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const response = await api.post(`/api/projects/${project.id}/check-missing-sections`);
+                          alert(t('projectApplication.sectionsChecked', 'Missing sections checked successfully. Please check the project details.'));
+                          // プロジェクト一覧を更新
+                          if (isExecutor) {
+                            fetchMyProjects();
+                          } else {
+                            fetchProjects();
+                          }
+                        } catch (error) {
+                          console.error('Error checking missing sections:', error);
+                          alert(error.response?.data?.error || t('projectApplication.error.checkSections', 'Failed to check missing sections'));
+                        }
+                      }}
+                      className="px-3 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700"
+                    >
+                      {t('projectApplication.analysis.checkSections', 'Check Missing Sections')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            
             {/* 評価結果の表示 */}
             {(() => {
               if (!project.missing_sections) return null;
