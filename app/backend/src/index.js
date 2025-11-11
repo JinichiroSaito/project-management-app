@@ -1630,6 +1630,43 @@ app.delete('/api/projects/:id/kpi-reports/:reportId', authenticateToken, require
   }
 });
 
+// デバッグ用エンドポイント: 全プロジェクトとユーザー情報を確認
+app.get('/api/debug/projects', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    // 全プロジェクトを取得
+    const allProjects = await db.query(
+      `SELECT p.*, 
+              u1.name as executor_name, u1.email as executor_email,
+              u2.name as reviewer_name, u2.email as reviewer_email
+       FROM projects p
+       LEFT JOIN users u1 ON p.executor_id = u1.id
+       LEFT JOIN users u2 ON p.reviewer_id = u2.id
+       ORDER BY p.created_at DESC`
+    );
+    
+    // 全ユーザーを取得
+    const allUsers = await db.query(
+      'SELECT id, email, name, position, is_approved FROM users ORDER BY id'
+    );
+    
+    // 現在のユーザー情報
+    const currentUser = await db.query(
+      'SELECT id, email, name, position, is_approved FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    res.json({
+      currentUser: currentUser.rows[0] || null,
+      totalProjects: allProjects.rows.length,
+      projects: allProjects.rows,
+      totalUsers: allUsers.rows.length,
+      users: allUsers.rows
+    });
+  } catch (error) {
+    return handleError(res, error, 'Debug Projects');
+  }
+});
+
 // グローバルエラーハンドラー（未処理のエラーをキャッチ）
 app.use((error, req, res, next) => {
   console.error('[Unhandled Error]', {
