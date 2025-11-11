@@ -518,6 +518,7 @@ export const translations = {
     'projectApplication.file.download': '現在のファイルをダウンロード',
     'projectApplication.file.invalidType': 'PPTとPDFファイルのみ許可されています',
     'projectApplication.file.tooLarge': 'ファイルサイズは50MB未満である必要があります',
+    'projectApplication.uploadedFile': 'アップロードされたファイル',
     
     // Document Analysis
     'projectApplication.analysis.title': '文書分析',
