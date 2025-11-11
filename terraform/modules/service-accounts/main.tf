@@ -59,10 +59,18 @@ resource "google_project_iam_member" "cloud_build_logs_writer" {
 }
 
 # Cloud Run Dev サービスアカウントに署名付きURL生成権限を付与
+# サービスアカウント自身に対してsignBlob権限を付与する必要がある
 resource "google_service_account_iam_member" "cloud_run_dev_token_creator" {
   service_account_id = google_service_account.cloud_run_dev.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = "serviceAccount:${google_service_account.cloud_run_dev.email}"
+}
+
+# Cloud Run Dev サービスアカウントに直接signBlob権限を付与（プロジェクトレベル）
+resource "google_project_iam_member" "cloud_run_dev_sign_blob" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
+  member  = "serviceAccount:${google_service_account.cloud_run_dev.email}"
 }
 
 # Cloud Run Staging サービスアカウントに署名付きURL生成権限を付与
@@ -72,11 +80,25 @@ resource "google_service_account_iam_member" "cloud_run_staging_token_creator" {
   member             = "serviceAccount:${google_service_account.cloud_run_staging.email}"
 }
 
+# Cloud Run Staging サービスアカウントに直接signBlob権限を付与（プロジェクトレベル）
+resource "google_project_iam_member" "cloud_run_staging_sign_blob" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
+  member  = "serviceAccount:${google_service_account.cloud_run_staging.email}"
+}
+
 # Cloud Run Production サービスアカウントに署名付きURL生成権限を付与
 resource "google_service_account_iam_member" "cloud_run_prod_token_creator" {
   service_account_id = google_service_account.cloud_run_production.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = "serviceAccount:${google_service_account.cloud_run_production.email}"
+}
+
+# Cloud Run Production サービスアカウントに直接signBlob権限を付与（プロジェクトレベル）
+resource "google_project_iam_member" "cloud_run_prod_sign_blob" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
+  member  = "serviceAccount:${google_service_account.cloud_run_production.email}"
 }
 
 # 出力
