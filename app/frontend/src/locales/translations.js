@@ -246,6 +246,7 @@ export const translations = {
     'projectApplication.file.download': 'Download current file',
     'projectApplication.file.invalidType': 'Only PPT and PDF files are allowed',
     'projectApplication.file.tooLarge': 'File size must be less than 50MB',
+    'projectApplication.uploadedFile': 'Uploaded File',
     
     // Document Analysis
     'projectApplication.analysis.title': 'Document Analysis',
