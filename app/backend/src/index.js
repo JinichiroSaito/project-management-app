@@ -242,6 +242,25 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
     }
     
     console.log(`[My Projects] Fetched ${result.rows.length} projects for executor ${currentUser.rows[0].id} (${req.user.email})`);
+    
+    // デバッグ情報: 全プロジェクト数とexecutor_idの分布を確認
+    try {
+      const allProjectsDebug = await db.query('SELECT id, name, executor_id, application_status, created_at FROM projects ORDER BY created_at DESC');
+      console.log('[My Projects] Debug - All projects in database:', {
+        totalProjects: allProjectsDebug.rows.length,
+        projects: allProjectsDebug.rows.map(p => ({
+          id: p.id,
+          name: p.name,
+          executor_id: p.executor_id,
+          executor_id_type: typeof p.executor_id,
+          application_status: p.application_status,
+          created_at: p.created_at
+        }))
+      });
+    } catch (debugError) {
+      console.warn('[My Projects] Debug query failed:', debugError.message);
+    }
+    
     res.json({ projects: result.rows });
   } catch (error) {
     console.error('[My Projects] Error:', error);
