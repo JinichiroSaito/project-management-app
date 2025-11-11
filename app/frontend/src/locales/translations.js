@@ -528,6 +528,7 @@ export const translations = {
     'projectApplication.analysis.extractDescription': 'アップロードされたPPT/PDFファイルからAIを使用してテキストを抽出します',
     'projectApplication.analysis.checkMissing': '不足セクションをチェック',
     'projectApplication.analysis.check': '不足セクションをチェック',
+    'projectApplication.analysis.checkSections': '不足セクションをチェック',
     'projectApplication.analysis.checking': 'チェック中...',
     'projectApplication.analysis.checkDescription': '抽出されたテキストを分析し、プロジェクト申請に必要な不足セクションを特定します',
     'projectApplication.analysis.completeness': '完成度スコア',
