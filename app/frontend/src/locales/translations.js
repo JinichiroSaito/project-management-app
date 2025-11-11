@@ -256,6 +256,7 @@ export const translations = {
     'projectApplication.analysis.extractDescription': 'Extract text content from the uploaded PPT/PDF file using AI',
     'projectApplication.analysis.checkMissing': 'Check Missing Sections',
     'projectApplication.analysis.check': 'Check Missing Sections',
+    'projectApplication.analysis.checkSections': 'Check Missing Sections',
     'projectApplication.analysis.checking': 'Checking...',
     'projectApplication.analysis.checkDescription': 'Analyze the extracted text and identify missing sections required for the project application',
     'projectApplication.analysis.completeness': 'Completeness Score',
