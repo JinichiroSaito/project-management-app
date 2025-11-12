@@ -152,8 +152,15 @@ async function extractTextFromFile(fileUrl, fileType) {
     
     return extractedText;
   } catch (error) {
-    console.error('Error extracting text with Gemini:', error);
-    throw error;
+    console.error('Error extracting text from file:', error);
+    // より詳細なエラーメッセージを提供
+    if (error.message.includes('PPTX')) {
+      throw new Error(`PPTXファイルのテキスト抽出に失敗しました: ${error.message}`);
+    } else if (error.message.includes('PDF')) {
+      throw new Error(`PDFファイルのテキスト抽出に失敗しました: ${error.message}`);
+    } else {
+      throw new Error(`ファイルのテキスト抽出に失敗しました: ${error.message}`);
+    }
   }
 }
 
