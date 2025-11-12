@@ -1649,6 +1649,49 @@ app.delete('/api/projects/:id/kpi-reports/:reportId', authenticateToken, require
   }
 });
 
+// デバッグ用エンドポイント: 利用可能なGeminiモデルを確認
+app.get('/api/debug/gemini-models', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { GoogleGenerativeAI } = require('@google/generative-ai');
+    const apiKey = process.env.GEMINI_API_KEY;
+    
+    if (!apiKey) {
+      return res.status(500).json({ error: 'GEMINI_API_KEY is not set' });
+    }
+    
+    const genAI = new GoogleGenerativeAI(apiKey);
+    
+    try {
+      const models = await genAI.listModels();
+      const modelList = models.map(model => ({
+        name: model.name,
+        displayName: model.displayName || null,
+        supportedMethods: model.supportedGenerationMethods || []
+      }));
+      
+      // generateContentをサポートしているモデルをフィルタ
+      const generateContentModels = modelList.filter(model => 
+        model.supportedMethods.includes('generateContent')
+      );
+      
+      res.json({
+        allModels: modelList,
+        generateContentModels: generateContentModels,
+        totalModels: modelList.length,
+        generateContentSupported: generateContentModels.length
+      });
+    } catch (error) {
+      return res.status(500).json({ 
+        error: 'Failed to list models',
+        message: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
+  } catch (error) {
+    return handleError(res, error, 'List Gemini Models');
+  }
+});
+
 // デバッグ用エンドポイント: 全プロジェクトとユーザー情報を確認
 app.get('/api/debug/projects', authenticateToken, requireAdmin, async (req, res) => {
   try {
