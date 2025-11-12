@@ -85,7 +85,7 @@ async function extractTextFromFile(fileUrl, fileType) {
       extractedText = await extractTextFromPDF(buffer);
     } else {
       // PPTの場合はGemini APIを使用
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
       
       // ファイルをBase64エンコード
       const base64Data = buffer.toString('base64');
@@ -132,7 +132,7 @@ async function checkMissingSections(extractedText) {
   try {
     initializeGemini();
     
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
     
     const prompt = `以下の新規事業構想書（MVP開発承認申請書）のテキストを分析し、MVP開発承認における必要事項の基準に基づいて評価してください。
 
