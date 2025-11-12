@@ -1,6 +1,8 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { Storage } = require('@google-cloud/storage');
 const pdfParse = require('pdf-parse');
+const JSZip = require('jszip');
+const { DOMParser } = require('@xmldom/xmldom');
 
 // Gemini API初期化
 let genAI;
@@ -70,6 +72,49 @@ async function extractTextFromPDF(buffer) {
   }
 }
 
+// PPTXファイルからテキストを抽出（ZIPとして展開してXMLを読み取る）
+async function extractTextFromPPTX(buffer) {
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const textParts = [];
+    
+    // スライドファイルを取得（ppt/slides/slide*.xml）
+    const slideFiles = Object.keys(zip.files).filter(name => 
+      name.startsWith('ppt/slides/slide') && name.endsWith('.xml')
+    );
+    
+    // 各スライドからテキストを抽出
+    for (const slideFile of slideFiles) {
+      try {
+        const slideContent = await zip.files[slideFile].async('string');
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(slideContent, 'text/xml');
+        
+        // すべてのテキストノードを取得
+        const textNodes = xmlDoc.getElementsByTagName('a:t');
+        for (let i = 0; i < textNodes.length; i++) {
+          const text = textNodes[i].textContent;
+          if (text && text.trim()) {
+            textParts.push(text.trim());
+          }
+        }
+      } catch (error) {
+        console.warn(`Error processing slide ${slideFile}:`, error.message);
+        // スライドの処理に失敗しても続行
+      }
+    }
+    
+    if (textParts.length === 0) {
+      throw new Error('PPTXファイルからテキストを抽出できませんでした。');
+    }
+    
+    return textParts.join('\n');
+  } catch (error) {
+    console.error('Error extracting text from PPTX:', error);
+    throw new Error(`PPTXファイルのテキスト抽出に失敗しました: ${error.message}`);
+  }
+}
+
 // Gemini APIを使用してPPT/PDFからテキストを抽出
 async function extractTextFromFile(fileUrl, fileType) {
   try {
@@ -84,27 +129,16 @@ async function extractTextFromFile(fileUrl, fileType) {
       // PDFの場合はpdf-parseを使用
       extractedText = await extractTextFromPDF(buffer);
     } else {
-      // PPTの場合はGemini APIを使用（画像として処理）
-      // 注意: Gemini APIはPPTファイルを直接サポートしていないため、
-      // PPTXファイルをZIPとして展開して画像を抽出するか、
-      // またはエラーメッセージを返す必要があります
-      
-      // まず、PPTXファイルをZIPとして展開して画像を抽出することを試みる
-      // ただし、これは複雑なため、現時点ではエラーメッセージを返す
+      // PPTXファイルの場合はZIPとして展開してテキストを抽出
       const fileName = fileUrl.toLowerCase();
-      if (fileName.endsWith('.pptx') || fileName.endsWith('.ppt') || fileName.endsWith('.pptm')) {
-        throw new Error('PPTファイルのテキスト抽出は現在サポートされていません。PDFファイルに変換してからアップロードしてください。');
+      if (fileName.endsWith('.pptx') || fileName.endsWith('.pptm')) {
+        extractedText = await extractTextFromPPTX(buffer);
+      } else if (fileName.endsWith('.ppt')) {
+        // 古いPPT形式はサポートされていない
+        throw new Error('古いPPT形式（.ppt）はサポートされていません。PPTX形式に変換するか、PDFファイルに変換してからアップロードしてください。');
+      } else {
+        throw new Error('このファイル形式はサポートされていません。PDFまたはPPTXファイルをアップロードしてください。');
       }
-      
-      // その他のファイルタイプの場合、Gemini APIで画像として処理を試みる
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-      
-      // ファイルをBase64エンコード
-      const base64Data = buffer.toString('base64');
-      
-      // Gemini APIがサポートしているMIMEタイプを使用
-      // PPTファイルは直接サポートされていないため、エラーを返す
-      throw new Error('このファイル形式はサポートされていません。PDFファイルをアップロードしてください。');
     }
     
     return extractedText;
