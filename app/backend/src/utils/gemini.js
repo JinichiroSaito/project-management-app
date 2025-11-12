@@ -125,19 +125,28 @@ async function extractTextFromFile(fileUrl, fileType) {
     
     let extractedText = '';
     
-    if (fileType === 'application/pdf' || fileUrl.toLowerCase().endsWith('.pdf')) {
+    // ファイルURLからクエリパラメータを除去して拡張子を判定
+    const fileUrlWithoutQuery = fileUrl.split('?')[0].toLowerCase();
+    const fileExtension = fileUrlWithoutQuery.substring(fileUrlWithoutQuery.lastIndexOf('.'));
+    
+    if (fileType === 'application/pdf' || fileExtension === '.pdf') {
       // PDFの場合はpdf-parseを使用
       extractedText = await extractTextFromPDF(buffer);
-    } else {
+    } else if (fileExtension === '.pptx' || fileExtension === '.pptm') {
       // PPTXファイルの場合はZIPとして展開してテキストを抽出
-      const fileName = fileUrl.toLowerCase();
+      extractedText = await extractTextFromPPTX(buffer);
+    } else if (fileExtension === '.ppt') {
+      // 古いPPT形式はサポートされていない
+      throw new Error('古いPPT形式（.ppt）はサポートされていません。PPTX形式に変換するか、PDFファイルに変換してからアップロードしてください。');
+    } else {
+      // ファイル名からも判定を試みる
+      const fileName = fileUrlWithoutQuery.substring(fileUrlWithoutQuery.lastIndexOf('/') + 1);
       if (fileName.endsWith('.pptx') || fileName.endsWith('.pptm')) {
         extractedText = await extractTextFromPPTX(buffer);
-      } else if (fileName.endsWith('.ppt')) {
-        // 古いPPT形式はサポートされていない
-        throw new Error('古いPPT形式（.ppt）はサポートされていません。PPTX形式に変換するか、PDFファイルに変換してからアップロードしてください。');
+      } else if (fileName.endsWith('.pdf')) {
+        extractedText = await extractTextFromPDF(buffer);
       } else {
-        throw new Error('このファイル形式はサポートされていません。PDFまたはPPTXファイルをアップロードしてください。');
+        throw new Error(`このファイル形式（${fileExtension || '不明'}）はサポートされていません。PDFまたはPPTXファイルをアップロードしてください。`);
       }
     }
     
