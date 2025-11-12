@@ -84,40 +84,27 @@ async function extractTextFromFile(fileUrl, fileType) {
       // PDFの場合はpdf-parseを使用
       extractedText = await extractTextFromPDF(buffer);
     } else {
-      // PPTの場合はGemini APIを使用
+      // PPTの場合はGemini APIを使用（画像として処理）
+      // 注意: Gemini APIはPPTファイルを直接サポートしていないため、
+      // PPTXファイルをZIPとして展開して画像を抽出するか、
+      // またはエラーメッセージを返す必要があります
+      
+      // まず、PPTXファイルをZIPとして展開して画像を抽出することを試みる
+      // ただし、これは複雑なため、現時点ではエラーメッセージを返す
+      const fileName = fileUrl.toLowerCase();
+      if (fileName.endsWith('.pptx') || fileName.endsWith('.ppt') || fileName.endsWith('.pptm')) {
+        throw new Error('PPTファイルのテキスト抽出は現在サポートされていません。PDFファイルに変換してからアップロードしてください。');
+      }
+      
+      // その他のファイルタイプの場合、Gemini APIで画像として処理を試みる
       const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
       
       // ファイルをBase64エンコード
       const base64Data = buffer.toString('base64');
       
-      // MIMEタイプを決定
-      let mimeType = fileType;
-      if (!mimeType || mimeType === 'application/octet-stream') {
-        // ファイルURLから拡張子を判定
-        if (fileUrl.toLowerCase().endsWith('.pptx')) {
-          mimeType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-        } else if (fileUrl.toLowerCase().endsWith('.ppt')) {
-          mimeType = 'application/vnd.ms-powerpoint';
-        } else if (fileUrl.toLowerCase().endsWith('.pptm')) {
-          mimeType = 'application/vnd.ms-powerpoint.presentation.macroEnabled.12';
-        } else {
-          mimeType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-        }
-      }
-      
-      // Gemini APIでファイルを処理
-      const result = await model.generateContent([
-        {
-          inlineData: {
-            data: base64Data,
-            mimeType: mimeType
-          }
-        },
-        'このファイルの内容をテキストとして抽出してください。すべてのテキストをそのまま出力してください。スライドのタイトル、本文、箇条書きなど、すべてのテキストを含めてください。'
-      ]);
-      
-      const response = await result.response;
-      extractedText = response.text();
+      // Gemini APIがサポートしているMIMEタイプを使用
+      // PPTファイルは直接サポートされていないため、エラーを返す
+      throw new Error('このファイル形式はサポートされていません。PDFファイルをアップロードしてください。');
     }
     
     return extractedText;
