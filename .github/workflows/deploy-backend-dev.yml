@@ -51,11 +51,75 @@ jobs:
             echo "Artifact Registry repository already exists"
           fi
 
-      - name: Submit Cloud Build
+      - name: Build Docker image
+        working-directory: ./app/backend
+        run: |
+          docker build \
+            -t ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -t ${{ env.IMAGE_NAME }}:latest \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.IMAGE_NAME }}:latest
+
+      - name: Run database migrations
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          gcloud builds submit \
-            --config=cloudbuild.yaml \
-            --substitutions=SHORT_SHA=$SHORT_SHA \
-            --project=${{ env.PROJECT_ID }}
+          # マイグレーション用のCloud Run Jobを作成
+          gcloud run jobs create db-migrate-$SHORT_SHA \
+            --image=${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --vpc-connector=vpc-connector \
+            --service-account=cloud-run-dev@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
+            --set-env-vars="DB_HOST=10.81.0.3,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user" \
+            --set-secrets="DB_PASSWORD=db-password-dev:latest" \
+            --command=node \
+            --args=src/migrate.js \
+            --max-retries=3 \
+            --project=${{ env.PROJECT_ID }} || true
+          
+          # マイグレーションを実行
+          gcloud run jobs execute db-migrate-$SHORT_SHA \
+            --region=${{ env.REGION }} \
+            --wait \
+            --project=${{ env.PROJECT_ID }} || true
+          
+          # マイグレーションJobを削除
+          gcloud run jobs delete db-migrate-$SHORT_SHA \
+            --region=${{ env.REGION }} \
+            --quiet \
+            --project=${{ env.PROJECT_ID }} || true
+
+      - name: Deploy to Cloud Run
+        run: |
+          # リトライロジック付きでデプロイ
+          max_retries=3
+          retry_count=0
+          while [ $retry_count -lt $max_retries ]; do
+            if gcloud run deploy ${{ env.SERVICE_NAME }} \
+              --image=${{ env.IMAGE_NAME }}:${{ github.sha }} \
+              --region=${{ env.REGION }} \
+              --platform=managed \
+              --allow-unauthenticated \
+              --vpc-connector=vpc-connector \
+              --service-account=cloud-run-dev@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
+              --set-env-vars="DB_HOST=10.81.0.3,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user,NODE_ENV=development,EMAIL_SERVICE=gmail,ADMIN_EMAIL=jinichirou.saitou@asahi-gh.com,APP_URL=https://frontend-dev-823277232006.asia-northeast1.run.app,GCS_BUCKET_NAME=pm-app-uploads-dev" \
+              --set-secrets="DB_PASSWORD=db-password-dev:latest,FIREBASE_SERVICE_ACCOUNT=firebase-service-account-dev:latest,EMAIL_USER=email-user-dev:latest,EMAIL_APP_PASSWORD=email-app-password-dev:latest,GEMINI_API_KEY=gemini-api-key-dev:latest" \
+              --project=${{ env.PROJECT_ID }} \
+              --quiet; then
+              echo "Deployment successful"
+              exit 0
+            else
+              retry_count=$((retry_count + 1))
+              if [ $retry_count -lt $max_retries ]; then
+                echo "Deployment failed, retrying in 10 seconds... (attempt $retry_count/$max_retries)"
+                sleep 10
+              else
+                echo "Deployment failed after $max_retries attempts"
+                exit 1
+              fi
+            fi
+          done
 
