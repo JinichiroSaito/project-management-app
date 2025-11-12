@@ -75,6 +75,7 @@ async function extractTextFromPDF(buffer) {
 // PPTXファイルからテキストを抽出（ZIPとして展開してXMLを読み取る）
 async function extractTextFromPPTX(buffer) {
   try {
+    console.log('[Extract PPTX] Loading ZIP file...');
     const zip = await JSZip.loadAsync(buffer);
     const textParts = [];
     
@@ -83,43 +84,72 @@ async function extractTextFromPPTX(buffer) {
       name.startsWith('ppt/slides/slide') && name.endsWith('.xml')
     );
     
-    // 各スライドからテキストを抽出
-    for (const slideFile of slideFiles) {
-      try {
-        const slideContent = await zip.files[slideFile].async('string');
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(slideContent, 'text/xml');
-        
-        // すべてのテキストノードを取得
-        const textNodes = xmlDoc.getElementsByTagName('a:t');
-        for (let i = 0; i < textNodes.length; i++) {
-          const text = textNodes[i].textContent;
-          if (text && text.trim()) {
-            textParts.push(text.trim());
+    console.log(`[Extract PPTX] Found ${slideFiles.length} slide files`);
+    
+    if (slideFiles.length === 0) {
+      // スライドファイルが見つからない場合、他の場所を探す
+      const allXmlFiles = Object.keys(zip.files).filter(name => name.endsWith('.xml'));
+      console.log(`[Extract PPTX] No slide files found. Total XML files: ${allXmlFiles.length}`);
+      
+      // スライドマスターやレイアウトからもテキストを抽出を試みる
+      for (const xmlFile of allXmlFiles) {
+        try {
+          const xmlContent = await zip.files[xmlFile].async('string');
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
+          
+          // 名前空間を考慮してテキストノードを取得
+          // 'a:t' は名前空間 'http://schemas.openxmlformats.org/drawingml/2006/main' のテキスト要素
+          const textNodes = xmlDoc.getElementsByTagName('a:t');
+          for (let i = 0; i < textNodes.length; i++) {
+            const text = textNodes[i].textContent;
+            if (text && text.trim()) {
+              textParts.push(text.trim());
+            }
           }
+        } catch (error) {
+          console.warn(`[Extract PPTX] Error processing ${xmlFile}:`, error.message);
         }
-      } catch (error) {
-        console.warn(`Error processing slide ${slideFile}:`, error.message);
-        // スライドの処理に失敗しても続行
+      }
+    } else {
+      // 各スライドからテキストを抽出
+      for (const slideFile of slideFiles) {
+        try {
+          const slideContent = await zip.files[slideFile].async('string');
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(slideContent, 'text/xml');
+          
+          // すべてのテキストノードを取得（名前空間 'a' は 'http://schemas.openxmlformats.org/drawingml/2006/main'）
+          const textNodes = xmlDoc.getElementsByTagName('a:t');
+          for (let i = 0; i < textNodes.length; i++) {
+            const text = textNodes[i].textContent;
+            if (text && text.trim()) {
+              textParts.push(text.trim());
+            }
+          }
+        } catch (error) {
+          console.warn(`[Extract PPTX] Error processing slide ${slideFile}:`, error.message);
+          // スライドの処理に失敗しても続行
+        }
       }
     }
     
     if (textParts.length === 0) {
-      throw new Error('PPTXファイルからテキストを抽出できませんでした。');
+      throw new Error('PPTXファイルからテキストを抽出できませんでした。ファイルが空か、テキストが含まれていない可能性があります。');
     }
     
-    return textParts.join('\n');
+    const extractedText = textParts.join('\n');
+    console.log(`[Extract PPTX] Successfully extracted ${textParts.length} text parts, total length: ${extractedText.length} characters`);
+    return extractedText;
   } catch (error) {
-    console.error('Error extracting text from PPTX:', error);
+    console.error('[Extract PPTX] Error extracting text from PPTX:', error);
     throw new Error(`PPTXファイルのテキスト抽出に失敗しました: ${error.message}`);
   }
 }
 
-// Gemini APIを使用してPPT/PDFからテキストを抽出
+// PPT/PDFからテキストを抽出
 async function extractTextFromFile(fileUrl, fileType) {
   try {
-    initializeGemini();
-    
     // ファイルをダウンロード
     const buffer = await downloadFileFromStorage(fileUrl);
     
@@ -129,32 +159,48 @@ async function extractTextFromFile(fileUrl, fileType) {
     const fileUrlWithoutQuery = fileUrl.split('?')[0].toLowerCase();
     const fileExtension = fileUrlWithoutQuery.substring(fileUrlWithoutQuery.lastIndexOf('.'));
     
-    if (fileType === 'application/pdf' || fileExtension === '.pdf') {
+    // ファイル形式を判定（拡張子とMIMEタイプの両方を確認）
+    const isPDF = fileType === 'application/pdf' || fileExtension === '.pdf';
+    const isPPTX = fileExtension === '.pptx' || fileExtension === '.pptm' || 
+                   fileType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+                   fileType === 'application/vnd.ms-powerpoint.presentation.macroEnabled.12';
+    const isPPT = fileExtension === '.ppt' || fileType === 'application/vnd.ms-powerpoint';
+    
+    if (isPDF) {
       // PDFの場合はpdf-parseを使用
+      console.log('[Extract Text] Processing PDF file');
       extractedText = await extractTextFromPDF(buffer);
-    } else if (fileExtension === '.pptx' || fileExtension === '.pptm') {
+    } else if (isPPTX) {
       // PPTXファイルの場合はZIPとして展開してテキストを抽出
+      console.log('[Extract Text] Processing PPTX file');
       extractedText = await extractTextFromPPTX(buffer);
-    } else if (fileExtension === '.ppt') {
+    } else if (isPPT) {
       // 古いPPT形式はサポートされていない
       throw new Error('古いPPT形式（.ppt）はサポートされていません。PPTX形式に変換するか、PDFファイルに変換してからアップロードしてください。');
     } else {
-      // ファイル名からも判定を試みる
+      // ファイル名からも判定を試みる（フォールバック）
       const fileName = fileUrlWithoutQuery.substring(fileUrlWithoutQuery.lastIndexOf('/') + 1);
       if (fileName.endsWith('.pptx') || fileName.endsWith('.pptm')) {
+        console.log('[Extract Text] Processing PPTX file (detected from filename)');
         extractedText = await extractTextFromPPTX(buffer);
       } else if (fileName.endsWith('.pdf')) {
+        console.log('[Extract Text] Processing PDF file (detected from filename)');
         extractedText = await extractTextFromPDF(buffer);
       } else {
         throw new Error(`このファイル形式（${fileExtension || '不明'}）はサポートされていません。PDFまたはPPTXファイルをアップロードしてください。`);
       }
     }
     
+    if (!extractedText || extractedText.trim().length === 0) {
+      throw new Error('ファイルからテキストを抽出できませんでした。ファイルが空か、テキストが含まれていない可能性があります。');
+    }
+    
+    console.log(`[Extract Text] Successfully extracted ${extractedText.length} characters`);
     return extractedText;
   } catch (error) {
-    console.error('Error extracting text from file:', error);
+    console.error('[Extract Text] Error extracting text from file:', error);
     // より詳細なエラーメッセージを提供
-    if (error.message.includes('PPTX')) {
+    if (error.message.includes('PPTX') || error.message.includes('PPT')) {
       throw new Error(`PPTXファイルのテキスト抽出に失敗しました: ${error.message}`);
     } else if (error.message.includes('PDF')) {
       throw new Error(`PDFファイルのテキスト抽出に失敗しました: ${error.message}`);
