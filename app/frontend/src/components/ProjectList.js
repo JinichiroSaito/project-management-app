@@ -4,6 +4,7 @@ import { useAuth } from '../AuthContext';
 import { useLanguage } from '../LanguageContext';
 import ProjectApplicationForm from './ProjectApplicationForm';
 import ProjectKpiReports from './ProjectKpiReports';
+import ProjectBudgetManagement from './ProjectBudgetManagement';
 
 const ProjectList = () => {
   const [projects, setProjects] = useState([]);
@@ -300,9 +301,13 @@ const ProjectList = () => {
                 {t('projects.executor', 'Executor')}: {project.executor_name}
               </div>
             )}
-            {project.reviewer_name && (
+            {(project.reviewer_name || (project.reviewers && project.reviewers.length > 0)) && (
               <div className="text-xs text-gray-500 mb-1">
-                {t('projects.reviewer', 'Reviewer')}: {project.reviewer_name}
+                {t('projects.reviewer', 'Reviewer')}: {
+                  project.reviewers && project.reviewers.length > 0
+                    ? project.reviewers.map(r => r.name).join(', ')
+                    : project.reviewer_name
+                }
               </div>
             )}
             <div className="text-xs text-gray-500">
@@ -459,8 +464,10 @@ const ProjectList = () => {
                       </button>
                       <button
                         onClick={async () => {
-                          if (!project.reviewer_id) {
-                            alert(t('projectApplication.reviewerRequired', 'Please select a reviewer before submitting'));
+                          // 複数の審査者が設定されているか確認
+                          const hasReviewers = (project.reviewers && project.reviewers.length > 0) || project.reviewer_id;
+                          if (!hasReviewers) {
+                            alert(t('projectApplication.reviewerRequired', 'Please select at least one reviewer before submitting'));
                             return;
                           }
                           if (!window.confirm(t('projectApplication.confirmSubmit', 'Are you sure you want to submit this application for review?'))) {
@@ -479,9 +486,9 @@ const ProjectList = () => {
                             alert(error.response?.data?.error || t('projectApplication.error.submit', 'Failed to submit application'));
                           }
                         }}
-                        disabled={!project.reviewer_id}
+                        disabled={!(project.reviewers && project.reviewers.length > 0) && !project.reviewer_id}
                         className={`px-3 py-1.5 text-sm font-medium rounded-md ${
-                          project.reviewer_id
+                          ((project.reviewers && project.reviewers.length > 0) || project.reviewer_id)
                             ? 'bg-green-600 hover:bg-green-700 text-white'
                             : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                         }`}
@@ -508,6 +515,11 @@ const ProjectList = () => {
                 {selectedProjectForKpi?.id === project.id && (
                   <div className="mt-4 border-t pt-4">
                     <ProjectKpiReports project={selectedProjectForKpi} />
+                    {selectedProjectForKpi?.application_status === 'approved' && (
+                      <div className="mt-6">
+                        <ProjectBudgetManagement project={selectedProjectForKpi} />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

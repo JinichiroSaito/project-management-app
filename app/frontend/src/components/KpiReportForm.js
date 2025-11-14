@@ -6,6 +6,8 @@ const KpiReportForm = ({ project, reportType, report, onComplete, onCancel }) =>
   const [formData, setFormData] = useState({
     verification_content: report?.verification_content || '',
     kpi_metrics: report?.kpi_metrics ? (typeof report.kpi_metrics === 'string' ? report.kpi_metrics : JSON.stringify(report.kpi_metrics, null, 2)) : '',
+    results: report?.results || '',
+    budget_used: report?.budget_used || '',
     planned_date: report?.planned_date || '',
     planned_budget: report?.planned_budget || '',
     period_start: report?.period_start || '',
@@ -37,6 +39,8 @@ const KpiReportForm = ({ project, reportType, report, onComplete, onCancel }) =>
         report_type: reportType,
         verification_content: formData.verification_content,
         kpi_metrics: kpiMetrics,
+        results: formData.results || null,
+        budget_used: formData.budget_used ? parseFloat(formData.budget_used) : null,
         planned_date: formData.planned_date || null,
         planned_budget: formData.planned_budget ? parseFloat(formData.planned_budget) : null,
         period_start: formData.period_start || null,
@@ -66,6 +70,12 @@ const KpiReportForm = ({ project, reportType, report, onComplete, onCancel }) =>
     switch (reportType) {
       case 'semi_annual':
         return t('kpi.semiAnnual', 'Semi-Annual Report');
+      case 'mvp_completion':
+        return t('kpi.mvpCompletion', 'MVP Development Completion Report');
+      case 'internal_mvp':
+        return t('kpi.internalMvp', 'Internal MVP Development Report');
+      case 'external_mvp':
+        return t('kpi.externalMvp', 'External MVP Development Report');
       default:
         return reportType;
     }
@@ -111,23 +121,24 @@ const KpiReportForm = ({ project, reportType, report, onComplete, onCancel }) =>
           <p className="mt-1 text-xs text-gray-500">JSON形式で入力してください</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              {t('kpi.plannedDate', 'Planned Date (Year-Month)')} *
-            </label>
-            <input
-              type="month"
-              required
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-              value={formData.planned_date}
-              onChange={(e) => setFormData({ ...formData, planned_date: e.target.value })}
-            />
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">
+            {t('kpi.results', 'Verification Results')} *
+          </label>
+          <textarea
+            required
+            rows="4"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
+            value={formData.results}
+            onChange={(e) => setFormData({ ...formData, results: e.target.value })}
+            placeholder={t('kpi.resultsPlaceholder', 'Enter verification results...')}
+          />
+        </div>
 
+        {(reportType === 'internal_mvp' || reportType === 'external_mvp' || reportType === 'semi_annual') && (
           <div>
             <label className="block text-sm font-medium text-gray-700">
-              {t('kpi.plannedBudget', 'Planned Budget (JPY)')} *
+              {t('kpi.budgetUsed', 'Budget Used (JPY)')} *
             </label>
             <input
               type="number"
@@ -135,11 +146,41 @@ const KpiReportForm = ({ project, reportType, report, onComplete, onCancel }) =>
               min="0"
               step="1"
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-              value={formData.planned_budget}
-              onChange={(e) => setFormData({ ...formData, planned_budget: e.target.value })}
+              value={formData.budget_used}
+              onChange={(e) => setFormData({ ...formData, budget_used: e.target.value })}
             />
           </div>
-        </div>
+        )}
+
+        {(reportType === 'mvp_completion' || reportType === 'internal_mvp' || reportType === 'external_mvp') && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                {t('kpi.plannedDate', 'Planned Date (Year-Month)')}
+              </label>
+              <input
+                type="month"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
+                value={formData.planned_date}
+                onChange={(e) => setFormData({ ...formData, planned_date: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                {t('kpi.plannedBudget', 'Planned Budget (JPY)')}
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
+                value={formData.planned_budget}
+                onChange={(e) => setFormData({ ...formData, planned_budget: e.target.value })}
+              />
+            </div>
+          </div>
+        )}
 
         {(reportType === 'semi_annual') && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

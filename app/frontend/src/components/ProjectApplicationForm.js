@@ -9,7 +9,8 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
     name: project?.name || '',
     description: project?.description || '',
     requested_amount: project?.requested_amount || '',
-    reviewer_id: project?.reviewer_id || ''
+    reviewer_id: project?.reviewer_id || '', // 後方互換性のため残す
+    reviewer_ids: project?.reviewers ? project.reviewers.map(r => r.id) : (project?.reviewer_id ? [project.reviewer_id] : [])
   });
   const [selectedFile, setSelectedFile] = useState(null);
   const [reviewers, setReviewers] = useState([]);
@@ -42,7 +43,8 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
         name: project.name || '',
         description: project.description || '',
         requested_amount: project.requested_amount || '',
-        reviewer_id: project.reviewer_id || ''
+        reviewer_id: project.reviewer_id || '', // 後方互換性のため残す
+        reviewer_ids: project.reviewers ? project.reviewers.map(r => r.id) : (project.reviewer_id ? [project.reviewer_id] : [])
       });
     }
   }, [project]);
@@ -72,7 +74,11 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
       formDataToSend.append('name', formData.name);
       formDataToSend.append('description', formData.description || '');
       formDataToSend.append('requested_amount', formData.requested_amount);
-      if (formData.reviewer_id) {
+      // 複数の審査者IDを送信（reviewer_idsを優先）
+      if (formData.reviewer_ids && formData.reviewer_ids.length > 0) {
+        formDataToSend.append('reviewer_ids', formData.reviewer_ids.join(','));
+      } else if (formData.reviewer_id) {
+        // 後方互換性のため、単一のreviewer_idもサポート
         formDataToSend.append('reviewer_id', formData.reviewer_id);
       }
       
@@ -166,9 +172,11 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
   };
 
   const handleSubmitApplication = async () => {
-    if (!formData.reviewer_id) {
-      setError(t('projectApplication.reviewerRequired', 'Please select a reviewer before submitting'));
-      return;
+    if (!formData.reviewer_ids || formData.reviewer_ids.length === 0) {
+      if (!formData.reviewer_id) {
+        setError(t('projectApplication.reviewerRequired', 'Please select at least one reviewer before submitting'));
+        return;
+      }
     }
 
     try {
@@ -674,22 +682,43 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">
-              {t('projectApplication.reviewer', 'Reviewer')} *
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {t('projectApplication.reviewer', 'Reviewer')} * ({t('projectApplication.selectMultiple', 'You can select multiple reviewers')})
             </label>
-            <select
-              required
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-              value={formData.reviewer_id}
-              onChange={(e) => setFormData({ ...formData, reviewer_id: e.target.value })}
-            >
-              <option value="">{t('projectApplication.selectReviewer', 'Select a reviewer')}</option>
-              {reviewers.map((reviewer) => (
-                <option key={reviewer.id} value={reviewer.id}>
-                  {reviewer.name} ({reviewer.email}) - {reviewer.company}
-                </option>
-              ))}
-            </select>
+            <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-300 rounded-md p-3">
+              {reviewers.length === 0 ? (
+                <p className="text-gray-500 text-sm">{t('projectApplication.noReviewers', 'No reviewers available. Please contact an administrator.')}</p>
+              ) : (
+                reviewers.map((reviewer) => (
+                  <label key={reviewer.id} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                    <input
+                      type="checkbox"
+                      checked={formData.reviewer_ids?.includes(reviewer.id) || false}
+                      onChange={(e) => {
+                        const currentIds = formData.reviewer_ids || [];
+                        if (e.target.checked) {
+                          setFormData({ 
+                            ...formData, 
+                            reviewer_ids: [...currentIds, reviewer.id],
+                            reviewer_id: currentIds.length === 0 ? reviewer.id : formData.reviewer_id // 後方互換性のため最初のIDを設定
+                          });
+                        } else {
+                          setFormData({ 
+                            ...formData, 
+                            reviewer_ids: currentIds.filter(id => id !== reviewer.id),
+                            reviewer_id: currentIds.filter(id => id !== reviewer.id)[0] || '' // 後方互換性のため最初のIDを設定
+                          });
+                        }
+                      }}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm">
+                      {reviewer.name} ({reviewer.email}) - {reviewer.company}
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
           </div>
 
           {/* KPI Reports Section */}
@@ -819,7 +848,7 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
               <button
                 type="button"
                 onClick={handleSubmitApplication}
-                disabled={loading || !formData.reviewer_id}
+                disabled={loading || (!formData.reviewer_ids || formData.reviewer_ids.length === 0) && !formData.reviewer_id}
                 className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50"
               >
                 {t('projectApplication.submit', 'Submit for Review')}

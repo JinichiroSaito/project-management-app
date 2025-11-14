@@ -62,7 +62,13 @@ const ProjectKpiReports = ({ project }) => {
   };
 
   const amountCategory = getAmountCategory();
-  const canCreateSemiAnnual = amountCategory === 'over_500m' && project?.application_status === 'approved';
+  const isApproved = project?.application_status === 'approved';
+  
+  // 金額に応じたKPIレポートタイプの判定
+  const canCreateMvpCompletion = amountCategory === 'under_100m' && isApproved;
+  const canCreateInternalMvp = amountCategory === '100m_to_500m' && isApproved;
+  const canCreateExternalMvp = amountCategory === '100m_to_500m' && isApproved;
+  const canCreateSemiAnnual = amountCategory === 'over_500m' && isApproved;
 
   if (loading) {
     return (
@@ -78,18 +84,61 @@ const ProjectKpiReports = ({ project }) => {
         <h3 className="text-lg font-medium text-gray-900">
           {t('kpi.title', 'KPI Reports')}
         </h3>
-        {canCreateSemiAnnual && !showKpiForm && (
-          <button
-            type="button"
-            onClick={() => {
-              setKpiReportType('semi_annual');
-              setShowKpiForm(true);
-              setEditingKpiReport(null);
-            }}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-          >
-            {t('kpi.addSemiAnnual', 'Add Semi-Annual Report')}
-          </button>
+        {!showKpiForm && (
+          <div className="flex flex-wrap gap-2">
+            {canCreateMvpCompletion && (
+              <button
+                type="button"
+                onClick={() => {
+                  setKpiReportType('mvp_completion');
+                  setShowKpiForm(true);
+                  setEditingKpiReport(null);
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+              >
+                {t('kpi.addMvpCompletion', 'Add MVP Completion Report')}
+              </button>
+            )}
+            {canCreateInternalMvp && (
+              <button
+                type="button"
+                onClick={() => {
+                  setKpiReportType('internal_mvp');
+                  setShowKpiForm(true);
+                  setEditingKpiReport(null);
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+              >
+                {t('kpi.addInternalMvp', 'Add Internal MVP Report')}
+              </button>
+            )}
+            {canCreateExternalMvp && (
+              <button
+                type="button"
+                onClick={() => {
+                  setKpiReportType('external_mvp');
+                  setShowKpiForm(true);
+                  setEditingKpiReport(null);
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+              >
+                {t('kpi.addExternalMvp', 'Add External MVP Report')}
+              </button>
+            )}
+            {canCreateSemiAnnual && (
+              <button
+                type="button"
+                onClick={() => {
+                  setKpiReportType('semi_annual');
+                  setShowKpiForm(true);
+                  setEditingKpiReport(null);
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+              >
+                {t('kpi.addSemiAnnual', 'Add Semi-Annual Report')}
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -130,7 +179,10 @@ const ProjectKpiReports = ({ project }) => {
                 <div>
                   <h4 className="font-medium text-gray-900">
                     {report.report_type === 'semi_annual' && t('kpi.semiAnnual', 'Semi-Annual Report')}
-                    {report.report_type !== 'semi_annual' && report.report_type}
+                    {report.report_type === 'mvp_completion' && t('kpi.mvpCompletion', 'MVP Development Completion Report')}
+                    {report.report_type === 'internal_mvp' && t('kpi.internalMvp', 'Internal MVP Development Report')}
+                    {report.report_type === 'external_mvp' && t('kpi.externalMvp', 'External MVP Development Report')}
+                    {!['semi_annual', 'mvp_completion', 'internal_mvp', 'external_mvp'].includes(report.report_type) && report.report_type}
                   </h4>
                   <span className={`text-xs px-2 py-1 rounded-full mt-1 inline-block ${
                     report.status === 'submitted' ? 'bg-green-100 text-green-800' :
@@ -182,6 +234,16 @@ const ProjectKpiReports = ({ project }) => {
               {report.planned_budget && (
                 <p className="text-sm text-gray-700 mb-2">
                   <strong>{t('kpi.plannedBudget', 'Planned Budget')}:</strong> {new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(report.planned_budget)}
+                </p>
+              )}
+              {report.budget_used && (
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>{t('kpi.budgetUsed', 'Budget Used')}:</strong> {new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(report.budget_used)}
+                </p>
+              )}
+              {report.results && (
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>{t('kpi.results', 'Results')}:</strong> {report.results}
                 </p>
               )}
               {report.period_start && report.period_end && (

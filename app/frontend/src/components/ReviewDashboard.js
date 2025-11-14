@@ -1,22 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { useLanguage } from '../LanguageContext';
+import ProjectKpiReports from './ProjectKpiReports';
+import ProjectBudgetManagement from './ProjectBudgetManagement';
 
 const ReviewDashboard = () => {
   const [projects, setProjects] = useState([]);
+  const [approvedProjects, setApprovedProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedProject, setSelectedProject] = useState(null);
+  const [selectedApprovedProject, setSelectedApprovedProject] = useState(null);
   const [reviewComment, setReviewComment] = useState('');
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'approved'
   const { t } = useLanguage();
 
   useEffect(() => {
     fetchPendingReviews();
+    fetchApprovedProjects();
   }, []);
 
   const fetchPendingReviews = async () => {
     try {
-      setLoading(true);
       const response = await api.get('/api/projects/review/pending');
       setProjects(response.data.projects);
       setError('');
@@ -25,6 +30,15 @@ const ReviewDashboard = () => {
       setError(error.response?.data?.error || 'Failed to fetch pending reviews');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchApprovedProjects = async () => {
+    try {
+      const response = await api.get('/api/projects/review/approved');
+      setApprovedProjects(response.data.projects);
+    } catch (error) {
+      console.error('Error fetching approved projects:', error);
     }
   };
 
@@ -43,6 +57,7 @@ const ReviewDashboard = () => {
       setSelectedProject(null);
       setReviewComment('');
       fetchPendingReviews();
+      fetchApprovedProjects();
     } catch (error) {
       console.error('Error reviewing project:', error);
       setError(error.response?.data?.error || 'Failed to review project');
@@ -76,13 +91,41 @@ const ReviewDashboard = () => {
         {t('review.title', 'Review Dashboard')}
       </h2>
 
+      {/* タブ切り替え */}
+      <div className="mb-6 border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'pending'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            {t('review.pendingReviews', 'Pending Reviews')} ({projects.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('approved')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'approved'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            {t('review.approvedProjects', 'Approved Projects')} ({approvedProjects.length})
+          </button>
+        </nav>
+      </div>
+
       {error && (
         <div className="mb-4 rounded-md bg-red-50 p-4">
           <p className="text-sm text-red-800">{error}</p>
         </div>
       )}
 
-      {projects.length === 0 ? (
+      {activeTab === 'pending' && (
+        <>
+          {projects.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-500">{t('review.noPendingReviews', 'No pending reviews')}</p>
         </div>
@@ -103,6 +146,36 @@ const ReviewDashboard = () => {
               </div>
 
               <p className="text-sm text-gray-600 mb-4">{project.description}</p>
+
+              {/* ファイルダウンロード */}
+              {project.application_file_url && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-blue-900">
+                        {t('review.applicationFile', 'Application Document')}
+                      </p>
+                      {project.application_file_name && (
+                        <p className="text-xs text-blue-700 mt-1">
+                          {project.application_file_name}
+                        </p>
+                      )}
+                    </div>
+                    <a
+                      href={project.application_file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download={project.application_file_name || 'application-document'}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium inline-flex items-center space-x-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      <span>{t('review.downloadFile', 'Download File')}</span>
+                    </a>
+                  </div>
+                </div>
+              )}
 
               {/* 評価結果の表示 */}
               {(() => {
@@ -307,6 +380,69 @@ const ReviewDashboard = () => {
             </div>
           ))}
         </div>
+      )}
+        </>
+      )}
+
+      {activeTab === 'approved' && (
+        <>
+          {approvedProjects.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500">{t('review.noApprovedProjects', 'No approved projects')}</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-6">
+              {approvedProjects.map((project) => (
+                <div key={project.id} className="bg-white shadow rounded-lg p-6">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900">{project.name}</h3>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {t('review.executor', 'Executor')}: {project.executor_name} ({project.executor_email})
+                      </p>
+                    </div>
+                    <span className="px-3 py-1 text-sm font-medium rounded-full bg-green-100 text-green-800">
+                      {t('review.approved', 'Approved')}
+                    </span>
+                  </div>
+
+                  <p className="text-sm text-gray-600 mb-4">{project.description}</p>
+
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <span className="text-sm font-medium text-gray-700">
+                        {t('review.requestedAmount', 'Requested Amount')}:
+                      </span>
+                      <p className="text-lg font-bold text-indigo-600">
+                        {formatAmount(project.requested_amount)}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-sm font-medium text-gray-700">
+                        {t('review.amountCategory', 'Amount Category')}:
+                      </span>
+                      <p className="text-sm text-gray-600">
+                        {getAmountCategory(project.requested_amount) === 'under_100m' && t('review.category.under100m', 'Under 100 million yen')}
+                        {getAmountCategory(project.requested_amount) === '100m_to_500m' && t('review.category.100mTo500m', '100 million to 500 million yen')}
+                        {getAmountCategory(project.requested_amount) === 'over_500m' && t('review.category.over500m', 'Over 500 million yen')}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* KPIレポート表示 */}
+                  <div className="mt-6 border-t pt-6">
+                    <ProjectKpiReports project={project} />
+                  </div>
+
+                  {/* 予算管理 */}
+                  <div className="mt-6 border-t pt-6">
+                    <ProjectBudgetManagement project={project} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

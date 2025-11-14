@@ -131,7 +131,7 @@ app.get('/api/projects', optionalAuth, async (req, res) => {
     // まず、テーブルの構造を確認して、新しいカラムが存在するかチェック
     let result;
     try {
-      // 新しいカラムが存在する場合のクエリ
+      // 新しいカラムが存在する場合のクエリ（複数の審査者を含む）
       result = await db.query(
         `SELECT p.*, 
                 u1.name as executor_name, u1.email as executor_email,
@@ -139,10 +139,23 @@ app.get('/api/projects', optionalAuth, async (req, res) => {
                 p.extracted_text,
                 p.extracted_text_updated_at,
                 p.missing_sections,
-                p.missing_sections_updated_at
+                p.missing_sections_updated_at,
+                COALESCE(
+                  json_agg(
+                    json_build_object(
+                      'id', u3.id,
+                      'name', u3.name,
+                      'email', u3.email
+                    )
+                  ) FILTER (WHERE u3.id IS NOT NULL),
+                  '[]'::json
+                ) as reviewers
          FROM projects p
          LEFT JOIN users u1 ON p.executor_id = u1.id
          LEFT JOIN users u2 ON p.reviewer_id = u2.id
+         LEFT JOIN project_reviewers pr ON p.id = pr.project_id
+         LEFT JOIN users u3 ON pr.reviewer_id = u3.id
+         GROUP BY p.id, u1.id, u1.name, u1.email, u2.id, u2.name, u2.email
          ORDER BY p.created_at DESC`
       );
     } catch (queryError) {
@@ -199,7 +212,7 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
     
     let result;
     try {
-      // 新しいカラムが存在する場合のクエリ（自身が実行者であるプロジェクトのみ）
+      // 新しいカラムが存在する場合のクエリ（自身が実行者であるプロジェクトのみ、複数の審査者を含む）
       result = await db.query(
         `SELECT p.*, 
                 u1.name as executor_name, u1.email as executor_email,
@@ -207,11 +220,24 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
                 p.extracted_text,
                 p.extracted_text_updated_at,
                 p.missing_sections,
-                p.missing_sections_updated_at
+                p.missing_sections_updated_at,
+                COALESCE(
+                  json_agg(
+                    json_build_object(
+                      'id', u3.id,
+                      'name', u3.name,
+                      'email', u3.email
+                    )
+                  ) FILTER (WHERE u3.id IS NOT NULL),
+                  '[]'::json
+                ) as reviewers
          FROM projects p
          LEFT JOIN users u1 ON p.executor_id = u1.id
          LEFT JOIN users u2 ON p.reviewer_id = u2.id
+         LEFT JOIN project_reviewers pr ON p.id = pr.project_id
+         LEFT JOIN users u3 ON pr.reviewer_id = u3.id
          WHERE p.executor_id = $1
+         GROUP BY p.id, u1.id, u1.name, u1.email, u2.id, u2.name, u2.email
          ORDER BY p.created_at DESC`,
         [currentUser.rows[0].id]
       );
@@ -268,6 +294,66 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
   }
 });
 
+// Get approved projects for reviewers (reviewer only)
+app.get('/api/projects/review/approved', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    // 現在のユーザー情報を取得
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // 審査者であることを確認
+    if (currentUser.rows[0].position !== 'reviewer') {
+      return res.status(403).json({ error: 'Only reviewers can access this endpoint' });
+    }
+    
+    let result;
+    try {
+      // 承認済みプロジェクトを取得（複数の審査者を含む）
+      result = await db.query(
+        `SELECT DISTINCT p.*, 
+                u1.name as executor_name, u1.email as executor_email,
+                u2.name as reviewer_name, u2.email as reviewer_email,
+                p.extracted_text,
+                p.extracted_text_updated_at,
+                p.missing_sections,
+                p.missing_sections_updated_at,
+                COALESCE(
+                  json_agg(
+                    json_build_object(
+                      'id', u3.id,
+                      'name', u3.name,
+                      'email', u3.email
+                    )
+                  ) FILTER (WHERE u3.id IS NOT NULL) OVER (PARTITION BY p.id),
+                  '[]'::json
+                ) as reviewers
+         FROM projects p
+         LEFT JOIN users u1 ON p.executor_id = u1.id
+         LEFT JOIN users u2 ON p.reviewer_id = u2.id
+         LEFT JOIN project_reviewers pr ON p.id = pr.project_id
+         LEFT JOIN users u3 ON pr.reviewer_id = u3.id
+         WHERE (p.reviewer_id = $1 OR pr.reviewer_id = $1) AND p.application_status = 'approved'
+         ORDER BY p.created_at DESC`,
+        [currentUser.rows[0].id]
+      );
+    } catch (queryError) {
+      // 新しいカラムが存在しない場合（マイグレーション未実行）
+      console.warn('[Review Approved] New columns not found:', queryError.message);
+      return res.json({ projects: [] });
+    }
+    
+    res.json({ projects: result.rows });
+  } catch (error) {
+    return handleError(res, error, 'Fetch Approved Projects');
+  }
+});
+
 // Get projects for review (reviewer only) - このルートも /api/projects/:id より前に定義する必要がある
 app.get('/api/projects/review/pending', authenticateToken, requireApproved, async (req, res) => {
   try {
@@ -288,19 +374,32 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
     
     let result;
     try {
-      // 新しいカラムが存在する場合のクエリ
+      // 新しいカラムが存在する場合のクエリ（複数の審査者を含む）
+      // 複数の審査者のいずれかが現在のユーザーであるプロジェクトを取得
       result = await db.query(
-        `SELECT p.*, 
+        `SELECT DISTINCT p.*, 
                 u1.name as executor_name, u1.email as executor_email,
                 u2.name as reviewer_name, u2.email as reviewer_email,
                 p.extracted_text,
                 p.extracted_text_updated_at,
                 p.missing_sections,
-                p.missing_sections_updated_at
+                p.missing_sections_updated_at,
+                COALESCE(
+                  json_agg(
+                    json_build_object(
+                      'id', u3.id,
+                      'name', u3.name,
+                      'email', u3.email
+                    )
+                  ) FILTER (WHERE u3.id IS NOT NULL) OVER (PARTITION BY p.id),
+                  '[]'::json
+                ) as reviewers
          FROM projects p
          LEFT JOIN users u1 ON p.executor_id = u1.id
          LEFT JOIN users u2 ON p.reviewer_id = u2.id
-         WHERE p.reviewer_id = $1 AND p.application_status = 'submitted'
+         LEFT JOIN project_reviewers pr ON p.id = pr.project_id
+         LEFT JOIN users u3 ON pr.reviewer_id = u3.id
+         WHERE (p.reviewer_id = $1 OR pr.reviewer_id = $1) AND p.application_status = 'submitted'
          ORDER BY p.created_at DESC`,
         [currentUser.rows[0].id]
       );
@@ -322,7 +421,7 @@ app.get('/api/projects/:id', optionalAuth, async (req, res) => {
     const { id } = req.params;
     let result;
     try {
-      // 新しいカラムが存在する場合のクエリ
+      // 新しいカラムが存在する場合のクエリ（複数の審査者を含む）
       result = await db.query(
         `SELECT p.*, 
                 u1.name as executor_name, u1.email as executor_email,
@@ -330,11 +429,24 @@ app.get('/api/projects/:id', optionalAuth, async (req, res) => {
                 p.extracted_text,
                 p.extracted_text_updated_at,
                 p.missing_sections,
-                p.missing_sections_updated_at
+                p.missing_sections_updated_at,
+                COALESCE(
+                  json_agg(
+                    json_build_object(
+                      'id', u3.id,
+                      'name', u3.name,
+                      'email', u3.email
+                    )
+                  ) FILTER (WHERE u3.id IS NOT NULL),
+                  '[]'::json
+                ) as reviewers
          FROM projects p
          LEFT JOIN users u1 ON p.executor_id = u1.id
          LEFT JOIN users u2 ON p.reviewer_id = u2.id
-         WHERE p.id = $1`,
+         LEFT JOIN project_reviewers pr ON p.id = pr.project_id
+         LEFT JOIN users u3 ON pr.reviewer_id = u3.id
+         WHERE p.id = $1
+         GROUP BY p.id, u1.id, u1.name, u1.email, u2.id, u2.name, u2.email`,
         [id]
       );
     } catch (queryError) {
@@ -367,7 +479,8 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
       name, 
       description, 
       requested_amount, 
-      reviewer_id
+      reviewer_id, // 後方互換性のため残す
+      reviewer_ids // 複数の審査者ID（配列またはカンマ区切り文字列）
     } = req.body;
     
     if (!name) {
@@ -395,19 +508,38 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
       return res.status(403).json({ error: 'Only project executors can create project applications' });
     }
     
+    // 審査者IDを処理（reviewer_idsを優先、なければreviewer_idを使用）
+    let reviewerIds = [];
+    if (reviewer_ids) {
+      // 配列またはカンマ区切り文字列を処理
+      if (Array.isArray(reviewer_ids)) {
+        reviewerIds = reviewer_ids.map(id => parseInt(id)).filter(id => !isNaN(id));
+      } else if (typeof reviewer_ids === 'string') {
+        reviewerIds = reviewer_ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+      }
+    } else if (reviewer_id) {
+      // 後方互換性のため、単一のreviewer_idもサポート
+      const id = parseInt(reviewer_id);
+      if (!isNaN(id)) {
+        reviewerIds = [id];
+      }
+    }
+    
     // 審査者IDが指定されている場合、プロジェクト審査者（reviewer）であることを確認
-    if (reviewer_id) {
-      const reviewer = await db.query(
-        'SELECT id, position FROM users WHERE id = $1',
-        [reviewer_id]
+    if (reviewerIds.length > 0) {
+      const placeholders = reviewerIds.map((_, i) => `$${i + 1}`).join(',');
+      const reviewers = await db.query(
+        `SELECT id, position FROM users WHERE id IN (${placeholders})`,
+        reviewerIds
       );
       
-      if (reviewer.rows.length === 0) {
-        return res.status(404).json({ error: 'Reviewer not found' });
+      if (reviewers.rows.length !== reviewerIds.length) {
+        return res.status(404).json({ error: 'One or more reviewers not found' });
       }
       
-      if (reviewer.rows[0].position !== 'reviewer') {
-        return res.status(400).json({ error: 'Reviewer must be a project reviewer' });
+      const invalidReviewers = reviewers.rows.filter(r => r.position !== 'reviewer');
+      if (invalidReviewers.length > 0) {
+        return res.status(400).json({ error: 'All reviewers must have the reviewer position' });
       }
     }
     
@@ -442,6 +574,8 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
     let result;
     try {
       // ファイルアップロードカラムが存在する場合のINSERT
+      // 後方互換性のため、最初の審査者IDをreviewer_idに設定
+      const firstReviewerId = reviewerIds.length > 0 ? reviewerIds[0] : null;
       result = await db.query(
         `INSERT INTO projects (
           name, description, status, executor_id, reviewer_id, requested_amount, application_status,
@@ -452,7 +586,7 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
           description || '', 
           'planning', 
           executorId, 
-          reviewer_id || null, 
+          firstReviewerId, 
           requested_amount, 
           'draft',
           fileInfo?.url || null,
@@ -462,6 +596,21 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
           fileInfo ? new Date() : null
         ]
       );
+      
+      // project_reviewersテーブルに複数の審査者を保存
+      if (reviewerIds.length > 0) {
+        const projectId = result.rows[0].id;
+        for (const reviewerId of reviewerIds) {
+          try {
+            await db.query(
+              'INSERT INTO project_reviewers (project_id, reviewer_id) VALUES ($1, $2) ON CONFLICT (project_id, reviewer_id) DO NOTHING',
+              [projectId, reviewerId]
+            );
+          } catch (err) {
+            console.error(`[Project Create] Failed to insert reviewer ${reviewerId} for project ${projectId}:`, err);
+          }
+        }
+      }
       console.log('[Project Create] Project created successfully:', {
         id: result.rows[0].id,
         name: result.rows[0].name,
@@ -556,6 +705,7 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
     // 少し待機してから取得（トランザクションのコミットを待つ）
     await new Promise(resolve => setTimeout(resolve, 100));
     
+    // 複数の審査者を取得
     const createdProject = await db.query(
       `SELECT p.*, 
               u1.name as executor_name, u1.email as executor_email,
@@ -563,11 +713,24 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
               p.extracted_text,
               p.extracted_text_updated_at,
               p.missing_sections,
-              p.missing_sections_updated_at
+              p.missing_sections_updated_at,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'id', u3.id,
+                    'name', u3.name,
+                    'email', u3.email
+                  )
+                ) FILTER (WHERE u3.id IS NOT NULL),
+                '[]'::json
+              ) as reviewers
        FROM projects p
        LEFT JOIN users u1 ON p.executor_id = u1.id
        LEFT JOIN users u2 ON p.reviewer_id = u2.id
-       WHERE p.id = $1`,
+       LEFT JOIN project_reviewers pr ON p.id = pr.project_id
+       LEFT JOIN users u3 ON pr.reviewer_id = u3.id
+       WHERE p.id = $1
+       GROUP BY p.id, u1.id, u1.name, u1.email, u2.id, u2.name, u2.email`,
       [result.rows[0].id]
     );
     
@@ -616,7 +779,8 @@ app.put('/api/projects/:id', authenticateToken, upload.single('applicationFile')
       description, 
       status, 
       requested_amount, 
-      reviewer_id, 
+      reviewer_id, // 後方互換性のため残す
+      reviewer_ids, // 複数の審査者ID（配列またはカンマ区切り文字列）
       application_status
     } = req.body;
     
@@ -639,9 +803,16 @@ app.put('/api/projects/:id', authenticateToken, upload.single('applicationFile')
       return res.status(404).json({ error: 'Project not found' });
     }
     
+    // 複数の審査者を確認
+    const projectReviewers = await db.query(
+      'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
+      [id]
+    );
+    const reviewerIds = projectReviewers.rows.map(r => r.reviewer_id);
+    
     const projectData = project.rows[0];
     const isExecutor = projectData.executor_id === currentUser.rows[0].id;
-    const isReviewer = projectData.reviewer_id === currentUser.rows[0].id;
+    const isReviewer = projectData.reviewer_id === currentUser.rows[0].id || reviewerIds.includes(currentUser.rows[0].id);
     const isAdmin = currentUser.rows[0].position === 'admin' || (await db.query('SELECT is_admin FROM users WHERE id = $1', [currentUser.rows[0].id])).rows[0]?.is_admin;
     
     // 実行者は申請の編集が可能（draft状態のみ）
@@ -660,19 +831,38 @@ app.put('/api/projects/:id', authenticateToken, upload.single('applicationFile')
       return res.status(403).json({ error: 'Reviewers can only approve or reject applications' });
     }
     
+    // 審査者IDを処理（reviewer_idsを優先、なければreviewer_idを使用）
+    let reviewerIdsToUpdate = [];
+    if (reviewer_ids) {
+      // 配列またはカンマ区切り文字列を処理
+      if (Array.isArray(reviewer_ids)) {
+        reviewerIdsToUpdate = reviewer_ids.map(id => parseInt(id)).filter(id => !isNaN(id));
+      } else if (typeof reviewer_ids === 'string') {
+        reviewerIdsToUpdate = reviewer_ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+      }
+    } else if (reviewer_id) {
+      // 後方互換性のため、単一のreviewer_idもサポート
+      const id = parseInt(reviewer_id);
+      if (!isNaN(id)) {
+        reviewerIdsToUpdate = [id];
+      }
+    }
+    
     // 審査者IDが指定されている場合、プロジェクト審査者であることを確認
-    if (reviewer_id) {
-      const reviewer = await db.query(
-        'SELECT id, position FROM users WHERE id = $1',
-        [reviewer_id]
+    if (reviewerIdsToUpdate.length > 0) {
+      const placeholders = reviewerIdsToUpdate.map((_, i) => `$${i + 1}`).join(',');
+      const reviewers = await db.query(
+        `SELECT id, position FROM users WHERE id IN (${placeholders})`,
+        reviewerIdsToUpdate
       );
       
-      if (reviewer.rows.length === 0) {
-        return res.status(404).json({ error: 'Reviewer not found' });
+      if (reviewers.rows.length !== reviewerIdsToUpdate.length) {
+        return res.status(404).json({ error: 'One or more reviewers not found' });
       }
       
-      if (reviewer.rows[0].position !== 'reviewer') {
-        return res.status(400).json({ error: 'Reviewer must be a project reviewer' });
+      const invalidReviewers = reviewers.rows.filter(r => r.position !== 'reviewer');
+      if (invalidReviewers.length > 0) {
+        return res.status(400).json({ error: 'All reviewers must have the reviewer position' });
       }
     }
     
@@ -710,6 +900,8 @@ app.put('/api/projects/:id', authenticateToken, upload.single('applicationFile')
     let result;
     try {
       // ファイルアップロードカラムが存在する場合のUPDATE
+      // 後方互換性のため、最初の審査者IDをreviewer_idに設定
+      const firstReviewerId = reviewerIdsToUpdate.length > 0 ? reviewerIdsToUpdate[0] : reviewer_id || null;
       result = await db.query(
         `UPDATE projects 
          SET name = COALESCE($1, name), 
@@ -726,7 +918,7 @@ app.put('/api/projects/:id', authenticateToken, upload.single('applicationFile')
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $12 RETURNING *`,
         [
-          name, description, status, requested_amount, reviewer_id, application_status,
+          name, description, status, requested_amount, firstReviewerId, application_status,
           fileInfo?.url || null,
           fileInfo?.originalName || null,
           fileInfo?.contentType || null,
@@ -735,6 +927,24 @@ app.put('/api/projects/:id', authenticateToken, upload.single('applicationFile')
           id
         ]
       );
+      
+      // project_reviewersテーブルを更新（reviewer_idsが指定されている場合のみ）
+      if (reviewerIdsToUpdate.length > 0) {
+        // 既存の審査者を削除
+        await db.query('DELETE FROM project_reviewers WHERE project_id = $1', [id]);
+        
+        // 新しい審査者を追加
+        for (const reviewerId of reviewerIdsToUpdate) {
+          try {
+            await db.query(
+              'INSERT INTO project_reviewers (project_id, reviewer_id) VALUES ($1, $2) ON CONFLICT (project_id, reviewer_id) DO NOTHING',
+              [id, reviewerId]
+            );
+          } catch (err) {
+            console.error(`[Project Update] Failed to insert reviewer ${reviewerId} for project ${id}:`, err);
+          }
+        }
+      }
       
       // 新しいファイルがアップロードされた場合、古いファイルを削除
       if (fileInfo && oldFileUrl) {
@@ -1279,8 +1489,15 @@ app.post('/api/projects/:id/submit', authenticateToken, requireApproved, async (
       return res.status(400).json({ error: 'Project application has already been submitted' });
     }
     
-    if (!projectData.reviewer_id) {
-      return res.status(400).json({ error: 'Reviewer must be assigned before submission' });
+    // 複数の審査者が設定されているか確認
+    const projectReviewers = await db.query(
+      'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
+      [id]
+    );
+    const hasReviewers = projectData.reviewer_id || projectReviewers.rows.length > 0;
+    
+    if (!hasReviewers) {
+      return res.status(400).json({ error: 'At least one reviewer must be assigned before submission' });
     }
     
     // 申請を提出
@@ -1318,7 +1535,7 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
       return res.status(404).json({ error: 'User not found' });
     }
     
-    // プロジェクトの審査者を確認
+    // プロジェクトの審査者を確認（複数の審査者に対応）
     const project = await db.query(
       'SELECT reviewer_id, application_status FROM projects WHERE id = $1',
       [id]
@@ -1330,7 +1547,17 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
     
     const projectData = project.rows[0];
     
-    if (projectData.reviewer_id !== currentUser.rows[0].id) {
+    // project_reviewersテーブルから審査者を確認
+    const projectReviewers = await db.query(
+      'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
+      [id]
+    );
+    const reviewerIds = projectReviewers.rows.map(r => r.reviewer_id);
+    
+    // 現在のユーザーが審査者のいずれかであることを確認
+    const isAssignedReviewer = projectData.reviewer_id === currentUser.rows[0].id || reviewerIds.includes(currentUser.rows[0].id);
+    
+    if (!isAssignedReviewer) {
       return res.status(403).json({ error: 'Only the assigned reviewer can review this application' });
     }
     
@@ -1476,14 +1703,16 @@ app.post('/api/projects/:id/kpi-reports', authenticateToken, requireApproved, as
     try {
       result = await db.query(
         `INSERT INTO kpi_reports 
-         (project_id, report_type, verification_content, kpi_metrics, planned_date, planned_budget, period_start, period_end, created_by, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft')
+         (project_id, report_type, verification_content, kpi_metrics, results, budget_used, planned_date, planned_budget, period_start, period_end, created_by, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'draft')
          RETURNING *`,
         [
           id,
           report_type,
           verification_content || null,
           kpi_metrics ? JSON.stringify(kpi_metrics) : null,
+          results || null,
+          budget_used || null,
           planned_date || null,
           planned_budget || null,
           period_start || null,
@@ -1515,6 +1744,8 @@ app.put('/api/projects/:id/kpi-reports/:reportId', authenticateToken, requireApp
     const { 
       verification_content, 
       kpi_metrics, 
+      results,
+      budget_used,
       planned_date, 
       planned_budget,
       period_start,
@@ -1567,6 +1798,14 @@ app.put('/api/projects/:id/kpi-reports/:reportId', authenticateToken, requireApp
     if (kpi_metrics !== undefined) {
       updateFields.push(`kpi_metrics = $${paramIndex++}`);
       updateValues.push(JSON.stringify(kpi_metrics));
+    }
+    if (results !== undefined) {
+      updateFields.push(`results = $${paramIndex++}`);
+      updateValues.push(results);
+    }
+    if (budget_used !== undefined) {
+      updateFields.push(`budget_used = $${paramIndex++}`);
+      updateValues.push(budget_used);
     }
     if (planned_date !== undefined) {
       updateFields.push(`planned_date = $${paramIndex++}`);
@@ -1646,6 +1885,279 @@ app.delete('/api/projects/:id/kpi-reports/:reportId', authenticateToken, require
     res.json({ message: 'KPI report deleted successfully' });
   } catch (error) {
     return handleError(res, error, 'Delete KPI Report');
+  }
+});
+
+// ==================== Budget Management API ====================
+
+// Get annual budget for a project
+app.get('/api/projects/:id/annual-budget', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // プロジェクトの存在確認
+    const project = await db.query(
+      'SELECT id, annual_opex_budget, annual_capex_budget, application_status FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    // 承認済みプロジェクトのみアクセス可能
+    if (project.rows[0].application_status !== 'approved') {
+      return res.status(403).json({ error: 'Budget management is only available for approved projects' });
+    }
+    
+    res.json({
+      annual_opex_budget: project.rows[0].annual_opex_budget || 0,
+      annual_capex_budget: project.rows[0].annual_capex_budget || 0
+    });
+  } catch (error) {
+    return handleError(res, error, 'Get Annual Budget');
+  }
+});
+
+// Update annual budget for a project
+app.put('/api/projects/:id/annual-budget', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { annual_opex_budget, annual_capex_budget } = req.body;
+    
+    // プロジェクトの存在確認と権限確認
+    const project = await db.query(
+      'SELECT executor_id, application_status FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    if (project.rows[0].application_status !== 'approved') {
+      return res.status(403).json({ error: 'Budget management is only available for approved projects' });
+    }
+    
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // 実行者または審査者のみが予算を更新可能
+    const isExecutor = project.rows[0].executor_id === currentUser.rows[0].id;
+    const isReviewer = currentUser.rows[0].position === 'reviewer';
+    
+    if (!isExecutor && !isReviewer) {
+      return res.status(403).json({ error: 'Only project executors or reviewers can update annual budget' });
+    }
+    
+    const result = await db.query(
+      `UPDATE projects 
+       SET annual_opex_budget = COALESCE($1, annual_opex_budget),
+           annual_capex_budget = COALESCE($2, annual_capex_budget),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3 RETURNING annual_opex_budget, annual_capex_budget`,
+      [
+        annual_opex_budget !== undefined ? parseFloat(annual_opex_budget) : null,
+        annual_capex_budget !== undefined ? parseFloat(annual_capex_budget) : null,
+        id
+      ]
+    );
+    
+    res.json({
+      annual_opex_budget: result.rows[0].annual_opex_budget || 0,
+      annual_capex_budget: result.rows[0].annual_capex_budget || 0
+    });
+  } catch (error) {
+    return handleError(res, error, 'Update Annual Budget');
+  }
+});
+
+// Get monthly budget entries for a project
+app.get('/api/projects/:id/budget-entries', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { year } = req.query;
+    
+    // プロジェクトの存在確認
+    const project = await db.query(
+      'SELECT id, application_status FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    if (project.rows[0].application_status !== 'approved') {
+      return res.status(403).json({ error: 'Budget management is only available for approved projects' });
+    }
+    
+    let query = 'SELECT * FROM project_budget_entries WHERE project_id = $1';
+    const params = [id];
+    
+    if (year) {
+      query += ' AND year = $2 ORDER BY year, month';
+      params.push(parseInt(year));
+    } else {
+      query += ' ORDER BY year DESC, month DESC';
+    }
+    
+    const result = await db.query(query, params);
+    
+    // 累計金額を計算
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1;
+    
+    let totalOpexBudget = 0;
+    let totalOpexUsed = 0;
+    let totalCapexBudget = 0;
+    let totalCapexUsed = 0;
+    
+    result.rows.forEach(entry => {
+      if (entry.year < currentYear || (entry.year === currentYear && entry.month <= currentMonth)) {
+        totalOpexBudget += parseFloat(entry.opex_budget || 0);
+        totalOpexUsed += parseFloat(entry.opex_used || 0);
+        totalCapexBudget += parseFloat(entry.capex_budget || 0);
+        totalCapexUsed += parseFloat(entry.capex_used || 0);
+      }
+    });
+    
+    res.json({
+      entries: result.rows,
+      cumulative: {
+        opex_budget: totalOpexBudget,
+        opex_used: totalOpexUsed,
+        capex_budget: totalCapexBudget,
+        capex_used: totalCapexUsed
+      }
+    });
+  } catch (error) {
+    return handleError(res, error, 'Get Budget Entries');
+  }
+});
+
+// Create or update monthly budget entry
+app.post('/api/projects/:id/budget-entries', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { year, month, opex_budget, opex_used, capex_budget, capex_used } = req.body;
+    
+    if (!year || !month) {
+      return res.status(400).json({ error: 'Year and month are required' });
+    }
+    
+    if (month < 1 || month > 12) {
+      return res.status(400).json({ error: 'Month must be between 1 and 12' });
+    }
+    
+    // プロジェクトの存在確認と権限確認
+    const project = await db.query(
+      'SELECT executor_id, application_status FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    if (project.rows[0].application_status !== 'approved') {
+      return res.status(403).json({ error: 'Budget management is only available for approved projects' });
+    }
+    
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // 実行者または審査者のみが予算を更新可能
+    const isExecutor = project.rows[0].executor_id === currentUser.rows[0].id;
+    const isReviewer = currentUser.rows[0].position === 'reviewer';
+    
+    if (!isExecutor && !isReviewer) {
+      return res.status(403).json({ error: 'Only project executors or reviewers can update budget entries' });
+    }
+    
+    const result = await db.query(
+      `INSERT INTO project_budget_entries 
+       (project_id, year, month, opex_budget, opex_used, capex_budget, capex_used, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (project_id, year, month) 
+       DO UPDATE SET 
+         opex_budget = EXCLUDED.opex_budget,
+         opex_used = EXCLUDED.opex_used,
+         capex_budget = EXCLUDED.capex_budget,
+         capex_used = EXCLUDED.capex_used,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [
+        id,
+        parseInt(year),
+        parseInt(month),
+        opex_budget !== undefined ? parseFloat(opex_budget) : 0,
+        opex_used !== undefined ? parseFloat(opex_used) : 0,
+        capex_budget !== undefined ? parseFloat(capex_budget) : 0,
+        capex_used !== undefined ? parseFloat(capex_used) : 0,
+        currentUser.rows[0].id
+      ]
+    );
+    
+    res.json({ entry: result.rows[0] });
+  } catch (error) {
+    return handleError(res, error, 'Create/Update Budget Entry');
+  }
+});
+
+// Delete monthly budget entry
+app.delete('/api/projects/:id/budget-entries/:entryId', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id, entryId } = req.params;
+    
+    // プロジェクトの存在確認と権限確認
+    const project = await db.query(
+      'SELECT executor_id FROM projects WHERE id = $1',
+      [id]
+    );
+    
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // 実行者または審査者のみが削除可能
+    const isExecutor = project.rows[0].executor_id === currentUser.rows[0].id;
+    const isReviewer = currentUser.rows[0].position === 'reviewer';
+    
+    if (!isExecutor && !isReviewer) {
+      return res.status(403).json({ error: 'Only project executors or reviewers can delete budget entries' });
+    }
+    
+    await db.query(
+      'DELETE FROM project_budget_entries WHERE id = $1 AND project_id = $2',
+      [entryId, id]
+    );
+    
+    res.json({ message: 'Budget entry deleted successfully' });
+  } catch (error) {
+    return handleError(res, error, 'Delete Budget Entry');
   }
 });
 
