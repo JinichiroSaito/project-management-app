@@ -2314,15 +2314,82 @@ app.get('/api/debug/projects', authenticateToken, requireAdmin, async (req, res)
       [req.user.email]
     );
     
+    // project_reviewersテーブルのデータを取得
+    let projectReviewers = [];
+    try {
+      const reviewersResult = await db.query(
+        'SELECT pr.*, u.email as reviewer_email, u.name as reviewer_name, p.name as project_name FROM project_reviewers pr LEFT JOIN users u ON pr.reviewer_id = u.id LEFT JOIN projects p ON pr.project_id = p.id ORDER BY pr.project_id'
+      );
+      projectReviewers = reviewersResult.rows;
+    } catch (err) {
+      console.warn('[Debug] project_reviewers table not found:', err.message);
+    }
+    
     res.json({
       currentUser: currentUser.rows[0] || null,
       totalProjects: allProjects.rows.length,
       projects: allProjects.rows,
       totalUsers: allUsers.rows.length,
-      users: allUsers.rows
+      users: allUsers.rows,
+      projectReviewers: projectReviewers
     });
   } catch (error) {
     return handleError(res, error, 'Debug Projects');
+  }
+});
+
+// デバッグ用エンドポイント: 審査待ちプロジェクトのデバッグ情報
+app.get('/api/debug/review-pending', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    // 現在のユーザー情報を取得
+    const currentUser = await db.query(
+      'SELECT id, email, name, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const userId = currentUser.rows[0].id;
+    
+    // 提出済みプロジェクトを取得
+    const submittedProjects = await db.query(
+      'SELECT id, name, application_status, reviewer_id FROM projects WHERE application_status = $1',
+      ['submitted']
+    );
+    
+    // project_reviewersテーブルのデータを取得
+    let projectReviewers = [];
+    try {
+      const reviewersResult = await db.query(
+        'SELECT project_id, reviewer_id FROM project_reviewers'
+      );
+      projectReviewers = reviewersResult.rows;
+    } catch (err) {
+      console.warn('[Debug] project_reviewers table not found:', err.message);
+    }
+    
+    // 現在のユーザーが審査者として割り当てられているプロジェクトを確認
+    const assignedProjects = projectReviewers.filter(pr => pr.reviewer_id === userId);
+    const projectsWithCurrentUserAsReviewer = submittedProjects.rows.filter(p => 
+      p.reviewer_id === userId || assignedProjects.some(ap => ap.project_id === p.id)
+    );
+    
+    res.json({
+      currentUser: {
+        id: userId,
+        email: currentUser.rows[0].email,
+        name: currentUser.rows[0].name,
+        position: currentUser.rows[0].position
+      },
+      submittedProjects: submittedProjects.rows,
+      projectReviewers: projectReviewers,
+      assignedProjects: assignedProjects,
+      projectsWithCurrentUserAsReviewer: projectsWithCurrentUserAsReviewer
+    });
+  } catch (error) {
+    return handleError(res, error, 'Debug Review Pending');
   }
 });
 

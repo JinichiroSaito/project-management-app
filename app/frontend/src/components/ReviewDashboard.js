@@ -15,10 +15,22 @@ const ReviewDashboard = () => {
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'approved'
   const { t } = useLanguage();
 
+  const [debugInfo, setDebugInfo] = useState(null);
+  const [showDebug, setShowDebug] = useState(false);
+
   useEffect(() => {
     fetchPendingReviews();
     fetchApprovedProjects();
   }, []);
+
+  const fetchDebugInfo = async () => {
+    try {
+      const response = await api.get('/api/debug/review-pending');
+      setDebugInfo(response.data);
+    } catch (error) {
+      console.error('Error fetching debug info:', error);
+    }
+  };
 
   const fetchPendingReviews = async () => {
     try {
@@ -134,6 +146,66 @@ const ReviewDashboard = () => {
           <p className="text-sm text-red-800">{error}</p>
         </div>
       )}
+
+      {/* デバッグ情報 */}
+      <div className="mb-4">
+        <button
+          onClick={() => {
+            if (!showDebug) {
+              fetchDebugInfo();
+            }
+            setShowDebug(!showDebug);
+          }}
+          className="text-sm text-gray-600 hover:text-gray-800 underline"
+        >
+          {showDebug ? 'デバッグ情報を非表示' : 'デバッグ情報を表示'}
+        </button>
+        {showDebug && debugInfo && (
+          <div className="mt-2 p-4 bg-gray-50 border border-gray-200 rounded-lg text-xs">
+            <h4 className="font-medium mb-2">デバッグ情報:</h4>
+            <div className="space-y-2">
+              <div>
+                <strong>現在のユーザー:</strong>
+                <pre className="mt-1 bg-white p-2 rounded overflow-auto">
+                  {JSON.stringify(debugInfo.currentUser, null, 2)}
+                </pre>
+              </div>
+              <div>
+                <strong>提出済みプロジェクト数:</strong> {debugInfo.submittedProjects?.length || 0}
+                {debugInfo.submittedProjects && debugInfo.submittedProjects.length > 0 && (
+                  <pre className="mt-1 bg-white p-2 rounded overflow-auto">
+                    {JSON.stringify(debugInfo.submittedProjects, null, 2)}
+                  </pre>
+                )}
+              </div>
+              <div>
+                <strong>project_reviewersテーブルのデータ数:</strong> {debugInfo.projectReviewers?.length || 0}
+                {debugInfo.projectReviewers && debugInfo.projectReviewers.length > 0 && (
+                  <pre className="mt-1 bg-white p-2 rounded overflow-auto">
+                    {JSON.stringify(debugInfo.projectReviewers, null, 2)}
+                  </pre>
+                )}
+              </div>
+              <div>
+                <strong>現在のユーザーに割り当てられたプロジェクト数:</strong> {debugInfo.assignedProjects?.length || 0}
+                {debugInfo.assignedProjects && debugInfo.assignedProjects.length > 0 && (
+                  <pre className="mt-1 bg-white p-2 rounded overflow-auto">
+                    {JSON.stringify(debugInfo.assignedProjects, null, 2)}
+                  </pre>
+                )}
+              </div>
+              <div>
+                <strong>表示されるべきプロジェクト数:</strong> {debugInfo.projectsWithCurrentUserAsReviewer?.length || 0}
+                {debugInfo.projectsWithCurrentUserAsReviewer && debugInfo.projectsWithCurrentUserAsReviewer.length > 0 && (
+                  <pre className="mt-1 bg-white p-2 rounded overflow-auto">
+                    {JSON.stringify(debugInfo.projectsWithCurrentUserAsReviewer, null, 2)}
+                  </pre>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {activeTab === 'pending' && (
         <>
