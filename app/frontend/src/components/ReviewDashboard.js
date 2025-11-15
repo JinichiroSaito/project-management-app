@@ -22,12 +22,24 @@ const ReviewDashboard = () => {
 
   const fetchPendingReviews = async () => {
     try {
+      setLoading(true);
+      console.log('[ReviewDashboard] Fetching pending reviews...');
       const response = await api.get('/api/projects/review/pending');
-      setProjects(response.data.projects);
+      console.log('[ReviewDashboard] Received response:', response.data);
+      setProjects(response.data.projects || []);
       setError('');
+      if ((response.data.projects || []).length === 0) {
+        console.warn('[ReviewDashboard] No pending projects found');
+      }
     } catch (error) {
-      console.error('Error fetching pending reviews:', error);
-      setError(error.response?.data?.error || 'Failed to fetch pending reviews');
+      console.error('[ReviewDashboard] Error fetching pending reviews:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to fetch pending reviews';
+      setError(errorMessage);
+      console.error('[ReviewDashboard] Error details:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message
+      });
     } finally {
       setLoading(false);
     }
@@ -127,7 +139,22 @@ const ReviewDashboard = () => {
         <>
           {projects.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-gray-500">{t('review.noPendingReviews', 'No pending reviews')}</p>
+          <p className="text-gray-500 mb-4">{t('review.noPendingReviews', 'No pending reviews')}</p>
+          {error && (
+            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg max-w-2xl mx-auto">
+              <p className="text-sm text-red-800 font-medium mb-2">エラー:</p>
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg max-w-2xl mx-auto">
+            <p className="text-sm text-blue-800 font-medium mb-2">確認事項:</p>
+            <ul className="text-sm text-blue-700 text-left space-y-1 list-disc list-inside">
+              <li>プロジェクトが「提出済み」ステータスになっているか確認してください</li>
+              <li>プロジェクトに審査者が正しく設定されているか確認してください</li>
+              <li>現在のユーザーのpositionが「reviewer」になっているか確認してください</li>
+              <li>ブラウザのコンソール（F12キー）でエラーメッセージを確認してください</li>
+            </ul>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
