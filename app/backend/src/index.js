@@ -316,7 +316,7 @@ app.get('/api/projects/review/approved', authenticateToken, requireApproved, asy
     try {
       // 承認済みプロジェクトを取得（複数の審査者を含む）
       result = await db.query(
-        `SELECT DISTINCT p.*, 
+        `SELECT p.*, 
                 u1.name as executor_name, u1.email as executor_email,
                 u2.name as reviewer_name, u2.email as reviewer_email,
                 p.extracted_text,
@@ -330,7 +330,7 @@ app.get('/api/projects/review/approved', authenticateToken, requireApproved, asy
                       'name', u3.name,
                       'email', u3.email
                     )
-                  ) FILTER (WHERE u3.id IS NOT NULL) OVER (PARTITION BY p.id),
+                  ) FILTER (WHERE u3.id IS NOT NULL),
                   '[]'::json
                 ) as reviewers
          FROM projects p
@@ -339,6 +339,7 @@ app.get('/api/projects/review/approved', authenticateToken, requireApproved, asy
          LEFT JOIN project_reviewers pr ON p.id = pr.project_id
          LEFT JOIN users u3 ON pr.reviewer_id = u3.id
          WHERE (p.reviewer_id = $1 OR pr.reviewer_id = $1) AND p.application_status = 'approved'
+         GROUP BY p.id, u1.id, u1.name, u1.email, u2.id, u2.name, u2.email
          ORDER BY p.created_at DESC`,
         [currentUser.rows[0].id]
       );
@@ -376,35 +377,81 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
     try {
       // 新しいカラムが存在する場合のクエリ（複数の審査者を含む）
       // 複数の審査者のいずれかが現在のユーザーであるプロジェクトを取得
-      result = await db.query(
-        `SELECT DISTINCT p.*, 
-                u1.name as executor_name, u1.email as executor_email,
-                u2.name as reviewer_name, u2.email as reviewer_email,
-                p.extracted_text,
-                p.extracted_text_updated_at,
-                p.missing_sections,
-                p.missing_sections_updated_at,
-                COALESCE(
-                  json_agg(
-                    json_build_object(
-                      'id', u3.id,
-                      'name', u3.name,
-                      'email', u3.email
-                    )
-                  ) FILTER (WHERE u3.id IS NOT NULL) OVER (PARTITION BY p.id),
-                  '[]'::json
-                ) as reviewers
-         FROM projects p
-         LEFT JOIN users u1 ON p.executor_id = u1.id
-         LEFT JOIN users u2 ON p.reviewer_id = u2.id
-         LEFT JOIN project_reviewers pr ON p.id = pr.project_id
-         LEFT JOIN users u3 ON pr.reviewer_id = u3.id
-         WHERE (p.reviewer_id = $1 OR pr.reviewer_id = $1) AND p.application_status = 'submitted'
-         ORDER BY p.created_at DESC`,
-        [currentUser.rows[0].id]
-      );
+      const userId = currentUser.rows[0].id;
+      console.log('[Review Pending] Fetching projects for reviewer:', { userId, email: req.user.email });
+      
+      // まず、project_reviewersテーブルにデータが存在するか確認
+      const hasProjectReviewersTable = await db.query(
+        `SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'project_reviewers'
+        )`
+      ).catch(() => ({ rows: [{ exists: false }] }));
+      
+      if (hasProjectReviewersTable.rows[0]?.exists) {
+        // project_reviewersテーブルが存在する場合
+        result = await db.query(
+          `SELECT DISTINCT p.*, 
+                  u1.name as executor_name, u1.email as executor_email,
+                  u2.name as reviewer_name, u2.email as reviewer_email,
+                  p.extracted_text,
+                  p.extracted_text_updated_at,
+                  p.missing_sections,
+                  p.missing_sections_updated_at,
+                  COALESCE(
+                    (
+                      SELECT json_agg(
+                        json_build_object(
+                          'id', u3.id,
+                          'name', u3.name,
+                          'email', u3.email
+                        )
+                      )
+                      FROM project_reviewers pr2
+                      LEFT JOIN users u3 ON pr2.reviewer_id = u3.id
+                      WHERE pr2.project_id = p.id
+                    ),
+                    '[]'::json
+                  ) as reviewers
+           FROM projects p
+           LEFT JOIN users u1 ON p.executor_id = u1.id
+           LEFT JOIN users u2 ON p.reviewer_id = u2.id
+           LEFT JOIN project_reviewers pr ON p.id = pr.project_id
+           WHERE p.application_status = 'submitted'
+             AND (p.reviewer_id = $1 OR pr.reviewer_id = $1)
+           ORDER BY p.created_at DESC`,
+          [userId]
+        );
+      } else {
+        // project_reviewersテーブルが存在しない場合（後方互換性）
+        result = await db.query(
+          `SELECT p.*, 
+                  u1.name as executor_name, u1.email as executor_email,
+                  u2.name as reviewer_name, u2.email as reviewer_email,
+                  '[]'::json as reviewers
+           FROM projects p
+           LEFT JOIN users u1 ON p.executor_id = u1.id
+           LEFT JOIN users u2 ON p.reviewer_id = u2.id
+           WHERE p.application_status = 'submitted'
+             AND p.reviewer_id = $1
+           ORDER BY p.created_at DESC`,
+          [userId]
+        );
+      }
+      
+      console.log('[Review Pending] Found projects:', result.rows.length);
+      if (result.rows.length > 0) {
+        console.log('[Review Pending] First project:', {
+          id: result.rows[0].id,
+          name: result.rows[0].name,
+          reviewer_id: result.rows[0].reviewer_id,
+          reviewers: result.rows[0].reviewers
+        });
+      }
     } catch (queryError) {
       // 新しいカラムが存在しない場合（マイグレーション未実行）
+      console.error('[Review Pending] Query error:', queryError.message, queryError.stack);
       console.warn('[Review Pending] New columns not found:', queryError.message);
       return res.json({ projects: [] });
     }
@@ -600,16 +647,38 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
       // project_reviewersテーブルに複数の審査者を保存
       if (reviewerIds.length > 0) {
         const projectId = result.rows[0].id;
+        console.log('[Project Create] Saving reviewers to project_reviewers table:', {
+          projectId: projectId,
+          reviewerIds: reviewerIds
+        });
         for (const reviewerId of reviewerIds) {
           try {
-            await db.query(
-              'INSERT INTO project_reviewers (project_id, reviewer_id) VALUES ($1, $2) ON CONFLICT (project_id, reviewer_id) DO NOTHING',
+            const insertResult = await db.query(
+              'INSERT INTO project_reviewers (project_id, reviewer_id) VALUES ($1, $2) ON CONFLICT (project_id, reviewer_id) DO NOTHING RETURNING *',
               [projectId, reviewerId]
             );
+            if (insertResult.rows.length > 0) {
+              console.log(`[Project Create] Successfully inserted reviewer ${reviewerId} for project ${projectId}`);
+            } else {
+              console.log(`[Project Create] Reviewer ${reviewerId} already exists for project ${projectId} (conflict resolved)`);
+            }
           } catch (err) {
             console.error(`[Project Create] Failed to insert reviewer ${reviewerId} for project ${projectId}:`, err);
+            // エラーが発生しても続行（プロジェクト作成は成功とする）
           }
         }
+        
+        // 保存された審査者を確認
+        const savedReviewers = await db.query(
+          'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
+          [projectId]
+        );
+        console.log('[Project Create] Saved reviewers:', {
+          projectId: projectId,
+          savedReviewerIds: savedReviewers.rows.map(r => r.reviewer_id)
+        });
+      } else {
+        console.warn('[Project Create] No reviewers to save to project_reviewers table');
       }
       console.log('[Project Create] Project created successfully:', {
         id: result.rows[0].id,
@@ -1555,10 +1624,26 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
     const reviewerIds = projectReviewers.rows.map(r => r.reviewer_id);
     
     // 現在のユーザーが審査者のいずれかであることを確認
-    const isAssignedReviewer = projectData.reviewer_id === currentUser.rows[0].id || reviewerIds.includes(currentUser.rows[0].id);
+    const userId = currentUser.rows[0].id;
+    const isAssignedReviewer = projectData.reviewer_id === userId || reviewerIds.includes(userId);
+    
+    console.log('[Review] Checking reviewer permission:', {
+      projectId: id,
+      userId: userId,
+      projectReviewerId: projectData.reviewer_id,
+      reviewerIds: reviewerIds,
+      isAssignedReviewer: isAssignedReviewer
+    });
     
     if (!isAssignedReviewer) {
-      return res.status(403).json({ error: 'Only the assigned reviewer can review this application' });
+      return res.status(403).json({ 
+        error: 'Only the assigned reviewer can review this application',
+        details: {
+          userId: userId,
+          projectReviewerId: projectData.reviewer_id,
+          reviewerIds: reviewerIds
+        }
+      });
     }
     
     if (projectData.application_status !== 'submitted') {
@@ -2423,8 +2508,15 @@ app.get('/api/projects/:id/extracted-text', authenticateToken, requireApproved, 
       return res.status(404).json({ error: 'User not found' });
     }
     
+    // 複数の審査者を確認
+    const projectReviewers = await db.query(
+      'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
+      [id]
+    );
+    const reviewerIds = projectReviewers.rows.map(r => r.reviewer_id);
+    
     const isExecutor = projectData.executor_id === currentUser.rows[0].id;
-    const isReviewer = projectData.reviewer_id === currentUser.rows[0].id;
+    const isReviewer = projectData.reviewer_id === currentUser.rows[0].id || reviewerIds.includes(currentUser.rows[0].id);
     const isAdmin = currentUser.rows[0].position === 'admin';
     
     if (!isExecutor && !isReviewer && !isAdmin) {
@@ -2466,8 +2558,15 @@ app.get('/api/projects/:id/missing-sections', authenticateToken, requireApproved
       return res.status(404).json({ error: 'User not found' });
     }
     
+    // 複数の審査者を確認
+    const projectReviewers = await db.query(
+      'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
+      [id]
+    );
+    const reviewerIds = projectReviewers.rows.map(r => r.reviewer_id);
+    
     const isExecutor = projectData.executor_id === currentUser.rows[0].id;
-    const isReviewer = projectData.reviewer_id === currentUser.rows[0].id;
+    const isReviewer = projectData.reviewer_id === currentUser.rows[0].id || reviewerIds.includes(currentUser.rows[0].id);
     const isAdmin = currentUser.rows[0].position === 'admin';
     
     if (!isExecutor && !isReviewer && !isAdmin) {
