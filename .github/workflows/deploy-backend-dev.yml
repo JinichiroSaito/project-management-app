@@ -67,8 +67,22 @@ jobs:
       - name: Run database migrations
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          JOB_NAME="db-migrate-$SHORT_SHA"
+          
+          # 既存のJobが存在する場合は削除
+          if gcloud run jobs describe $JOB_NAME --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} 2>/dev/null; then
+            echo "Existing migration job found, deleting..."
+            gcloud run jobs delete $JOB_NAME \
+              --region=${{ env.REGION }} \
+              --quiet \
+              --project=${{ env.PROJECT_ID }} || true
+            # 削除が完了するまで少し待機
+            sleep 5
+          fi
+          
           # マイグレーション用のCloud Run Jobを作成
-          gcloud run jobs create db-migrate-$SHORT_SHA \
+          echo "Creating migration job: $JOB_NAME"
+          gcloud run jobs create $JOB_NAME \
             --image=${{ env.IMAGE_NAME }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --vpc-connector=vpc-connector \
@@ -78,16 +92,18 @@ jobs:
             --command=node \
             --args=src/migrate.js \
             --max-retries=3 \
-            --project=${{ env.PROJECT_ID }} || true
+            --project=${{ env.PROJECT_ID }}
           
           # マイグレーションを実行
-          gcloud run jobs execute db-migrate-$SHORT_SHA \
+          echo "Executing migration job: $JOB_NAME"
+          gcloud run jobs execute $JOB_NAME \
             --region=${{ env.REGION }} \
             --wait \
-            --project=${{ env.PROJECT_ID }} || true
+            --project=${{ env.PROJECT_ID }}
           
           # マイグレーションJobを削除
-          gcloud run jobs delete db-migrate-$SHORT_SHA \
+          echo "Cleaning up migration job: $JOB_NAME"
+          gcloud run jobs delete $JOB_NAME \
             --region=${{ env.REGION }} \
             --quiet \
             --project=${{ env.PROJECT_ID }} || true
