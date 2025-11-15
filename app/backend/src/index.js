@@ -391,8 +391,9 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
       
       if (hasProjectReviewersTable.rows[0]?.exists) {
         // project_reviewersテーブルが存在する場合
+        // より確実な方法：サブクエリを使用して、現在のユーザーが審査者として割り当てられているプロジェクトを取得
         result = await db.query(
-          `SELECT DISTINCT p.*, 
+          `SELECT p.*, 
                   u1.name as executor_name, u1.email as executor_email,
                   u2.name as reviewer_name, u2.email as reviewer_email,
                   p.extracted_text,
@@ -417,9 +418,14 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
            FROM projects p
            LEFT JOIN users u1 ON p.executor_id = u1.id
            LEFT JOIN users u2 ON p.reviewer_id = u2.id
-           LEFT JOIN project_reviewers pr ON p.id = pr.project_id
            WHERE p.application_status = 'submitted'
-             AND (p.reviewer_id = $1 OR pr.reviewer_id = $1)
+             AND (
+               p.reviewer_id = $1 
+               OR EXISTS (
+                 SELECT 1 FROM project_reviewers pr 
+                 WHERE pr.project_id = p.id AND pr.reviewer_id = $1
+               )
+             )
            ORDER BY p.created_at DESC`,
           [userId]
         );
@@ -2335,6 +2341,29 @@ app.get('/api/debug/projects', authenticateToken, requireAdmin, async (req, res)
     });
   } catch (error) {
     return handleError(res, error, 'Debug Projects');
+  }
+});
+
+// デバッグ用エンドポイント: project_reviewersテーブルへの移行を実行
+app.post('/api/debug/migrate-reviewers', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    // 既存のreviewer_idをproject_reviewersテーブルに移行
+    const result = await db.query(
+      `INSERT INTO project_reviewers (project_id, reviewer_id, assigned_at)
+       SELECT id, reviewer_id, created_at
+       FROM projects
+       WHERE reviewer_id IS NOT NULL
+       ON CONFLICT (project_id, reviewer_id) DO NOTHING
+       RETURNING *`
+    );
+    
+    res.json({
+      message: 'Migration completed',
+      migrated: result.rows.length
+    });
+  } catch (error) {
+    console.error('[Migrate Reviewers] Error:', error);
+    return handleError(res, error, 'Migrate Reviewers');
   }
 });
 
