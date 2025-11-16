@@ -282,9 +282,9 @@ const ProjectList = () => {
         />
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4">
         {projects.map((project) => (
-          <div key={project.id} className="bg-white shadow rounded-lg p-6">
+          <div key={project.id} className="bg-white shadow rounded-lg p-6 w-full">
             <div className="flex justify-between items-start mb-2">
               <h3 className="text-lg font-medium text-gray-900">{project.name}</h3>
               <div className="flex flex-col items-end space-y-1">
