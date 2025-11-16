@@ -17,6 +17,7 @@ const ProjectList = () => {
   const { t } = useLanguage();
   
   const isExecutor = userInfo?.position === 'executor';
+  const isAdmin = userInfo?.is_admin || false;
 
   useEffect(() => {
     console.log('[ProjectList] useEffect triggered', { isExecutor, userInfo, user });
@@ -145,8 +146,24 @@ const ProjectList = () => {
         fetchProjects();
       }
     } catch (error) {
-      setError(t('projects.error.delete'));
+      console.error('Error deleting project:', error);
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || t('projects.error.delete');
+      setError(errorMessage);
+      alert(errorMessage);
     }
+  };
+
+  // プロジェクトを削除できるかどうかを判定
+  const canDeleteProject = (project) => {
+    // 管理者は全てのプロジェクトを削除可能
+    if (isAdmin) {
+      return true;
+    }
+    // 実行者は自分のプロジェクトのみ削除可能
+    if (isExecutor && project.executor_id === userInfo?.id) {
+      return true;
+    }
+    return false;
   };
 
   const getStatusColor = (status) => {
@@ -451,6 +468,7 @@ const ProjectList = () => {
               );
             })()}
             
+            {/* 実行者が自分のプロジェクトを操作する場合 */}
             {isExecutor && project.executor_id === userInfo?.id && (
               <div className="mt-4 flex flex-col space-y-2">
                 <div className="flex flex-wrap gap-2">
@@ -505,12 +523,14 @@ const ProjectList = () => {
                       {selectedProjectForKpi?.id === project.id ? t('kpi.hideReports', 'Hide KPI Reports') : t('kpi.showReports', 'Manage KPI Reports')}
                     </button>
                   )}
-                  <button
-                    onClick={() => handleDeleteProject(project.id)}
-                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md"
-                  >
-                    {t('projects.delete', 'Delete')}
-                  </button>
+                  {canDeleteProject(project) && (
+                    <button
+                      onClick={() => handleDeleteProject(project.id)}
+                      className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md"
+                    >
+                      {t('projects.delete', 'Delete')}
+                    </button>
+                  )}
                 </div>
                 {selectedProjectForKpi?.id === project.id && (
                   <div className="mt-4 border-t pt-4">
@@ -522,6 +542,20 @@ const ProjectList = () => {
                     )}
                   </div>
                 )}
+              </div>
+            )}
+            
+            {/* 管理者が全てのプロジェクトを削除できる場合（実行者が自分のプロジェクトを操作する場合を除く） */}
+            {isAdmin && !(isExecutor && project.executor_id === userInfo?.id) && canDeleteProject(project) && (
+              <div className="mt-4 flex flex-col space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => handleDeleteProject(project.id)}
+                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md"
+                  >
+                    {t('projects.delete', 'Delete')}
+                  </button>
+                </div>
               </div>
             )}
           </div>
