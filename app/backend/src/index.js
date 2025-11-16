@@ -2098,9 +2098,9 @@ app.get('/api/projects/:id/annual-budget', authenticateToken, requireApproved, a
   try {
     const { id } = req.params;
     
-    // プロジェクトの存在確認
+    // プロジェクトの存在確認と権限確認
     const project = await db.query(
-      'SELECT id, annual_opex_budget, annual_capex_budget, application_status FROM projects WHERE id = $1',
+      'SELECT id, executor_id, annual_opex_budget, annual_capex_budget, application_status FROM projects WHERE id = $1',
       [id]
     );
     
@@ -2111,6 +2111,26 @@ app.get('/api/projects/:id/annual-budget', authenticateToken, requireApproved, a
     // 承認済みプロジェクトのみアクセス可能
     if (project.rows[0].application_status !== 'approved') {
       return res.status(403).json({ error: 'Budget management is only available for approved projects' });
+    }
+    
+    // 現在のユーザー情報を取得
+    const currentUser = await db.query(
+      'SELECT id, position, is_admin FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const user = currentUser.rows[0];
+    const projectData = project.rows[0];
+    
+    // 実行者、審査者、または管理者のみアクセス可能
+    if (projectData.executor_id !== user.id && 
+        !user.is_admin && 
+        user.position !== 'reviewer') {
+      return res.status(403).json({ error: 'Access denied' });
     }
     
     res.json({
@@ -2151,12 +2171,11 @@ app.put('/api/projects/:id/annual-budget', authenticateToken, requireApproved, a
       return res.status(404).json({ error: 'User not found' });
     }
     
-    // 実行者または審査者のみが予算を更新可能
+    // 実行者のみが年間予算を更新可能（審査者は閲覧のみ）
     const isExecutor = project.rows[0].executor_id === currentUser.rows[0].id;
-    const isReviewer = currentUser.rows[0].position === 'reviewer';
     
-    if (!isExecutor && !isReviewer) {
-      return res.status(403).json({ error: 'Only project executors or reviewers can update annual budget' });
+    if (!isExecutor) {
+      return res.status(403).json({ error: 'Only project executors can update annual budget' });
     }
     
     const result = await db.query(
@@ -2187,9 +2206,9 @@ app.get('/api/projects/:id/budget-entries', authenticateToken, requireApproved, 
     const { id } = req.params;
     const { year } = req.query;
     
-    // プロジェクトの存在確認
+    // プロジェクトの存在確認と権限確認
     const project = await db.query(
-      'SELECT id, application_status FROM projects WHERE id = $1',
+      'SELECT id, executor_id, application_status FROM projects WHERE id = $1',
       [id]
     );
     
@@ -2199,6 +2218,26 @@ app.get('/api/projects/:id/budget-entries', authenticateToken, requireApproved, 
     
     if (project.rows[0].application_status !== 'approved') {
       return res.status(403).json({ error: 'Budget management is only available for approved projects' });
+    }
+    
+    // 現在のユーザー情報を取得
+    const currentUser = await db.query(
+      'SELECT id, position, is_admin FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const user = currentUser.rows[0];
+    const projectData = project.rows[0];
+    
+    // 実行者、審査者、または管理者のみアクセス可能
+    if (projectData.executor_id !== user.id && 
+        !user.is_admin && 
+        user.position !== 'reviewer') {
+      return res.status(403).json({ error: 'Access denied' });
     }
     
     let query = 'SELECT * FROM project_budget_entries WHERE project_id = $1';
@@ -2283,12 +2322,11 @@ app.post('/api/projects/:id/budget-entries', authenticateToken, requireApproved,
       return res.status(404).json({ error: 'User not found' });
     }
     
-    // 実行者または審査者のみが予算を更新可能
+    // 実行者のみが予算を更新可能（審査者は閲覧のみ）
     const isExecutor = project.rows[0].executor_id === currentUser.rows[0].id;
-    const isReviewer = currentUser.rows[0].position === 'reviewer';
     
-    if (!isExecutor && !isReviewer) {
-      return res.status(403).json({ error: 'Only project executors or reviewers can update budget entries' });
+    if (!isExecutor) {
+      return res.status(403).json({ error: 'Only project executors can create or update budget entries' });
     }
     
     const result = await db.query(
@@ -2345,12 +2383,11 @@ app.delete('/api/projects/:id/budget-entries/:entryId', authenticateToken, requi
       return res.status(404).json({ error: 'User not found' });
     }
     
-    // 実行者または審査者のみが削除可能
+    // 実行者のみが削除可能（審査者は閲覧のみ）
     const isExecutor = project.rows[0].executor_id === currentUser.rows[0].id;
-    const isReviewer = currentUser.rows[0].position === 'reviewer';
     
-    if (!isExecutor && !isReviewer) {
-      return res.status(403).json({ error: 'Only project executors or reviewers can delete budget entries' });
+    if (!isExecutor) {
+      return res.status(403).json({ error: 'Only project executors can delete budget entries' });
     }
     
     await db.query(

@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { useLanguage } from '../LanguageContext';
+import { useAuth } from '../AuthContext';
 import KpiReportForm from './KpiReportForm';
 
 const ProjectKpiReports = ({ project }) => {
+  const { userInfo } = useAuth();
+  const isExecutor = userInfo?.position === 'executor' && project?.executor_id === userInfo?.id;
+  const isReviewer = userInfo?.position === 'reviewer';
   const [kpiReports, setKpiReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -84,7 +88,7 @@ const ProjectKpiReports = ({ project }) => {
         <h3 className="text-lg font-medium text-gray-900">
           {t('kpi.title', 'KPI Reports')}
         </h3>
-        {!showKpiForm && (
+        {!showKpiForm && isExecutor && (
           <div className="flex flex-wrap gap-2">
             {canCreateMvpCompletion && (
               <button
@@ -192,26 +196,30 @@ const ProjectKpiReports = ({ project }) => {
                     {t(`kpi.status.${report.status}`, report.status)}
                   </span>
                 </div>
-                <div className="flex space-x-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingKpiReport(report);
-                      setKpiReportType(report.report_type);
-                      setShowKpiForm(true);
-                    }}
-                    className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
-                  >
-                    {t('kpi.editReport', 'Edit')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteKpiReport(report.id)}
-                    className="text-red-600 hover:text-red-700 text-sm font-medium"
-                  >
-                    {t('kpi.deleteReport', 'Delete')}
-                  </button>
-                </div>
+                {isExecutor ? (
+                  <div className="flex space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingKpiReport(report);
+                        setKpiReportType(report.report_type);
+                        setShowKpiForm(true);
+                      }}
+                      className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
+                    >
+                      {t('kpi.editReport', 'Edit')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteKpiReport(report.id)}
+                      className="text-red-600 hover:text-red-700 text-sm font-medium"
+                    >
+                      {t('kpi.deleteReport', 'Delete')}
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-gray-400 text-sm">{t('kpi.viewOnly', 'View Only')}</span>
+                )}
               </div>
               {report.verification_content && (
                 <p className="text-sm text-gray-700 mb-2">

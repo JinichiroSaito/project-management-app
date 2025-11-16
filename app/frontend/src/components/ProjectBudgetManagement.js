@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { useLanguage } from '../LanguageContext';
+import { useAuth } from '../AuthContext';
 
 const ProjectBudgetManagement = ({ project }) => {
+  const { userInfo } = useAuth();
+  const isExecutor = userInfo?.position === 'executor' && project?.executor_id === userInfo?.id;
+  const isReviewer = userInfo?.position === 'reviewer';
   const [annualBudget, setAnnualBudget] = useState({ opex: 0, capex: 0 });
   const [budgetEntries, setBudgetEntries] = useState([]);
   const [cumulative, setCumulative] = useState({ opex_budget: 0, opex_used: 0, capex_budget: 0, capex_used: 0 });
@@ -202,7 +206,10 @@ const ProjectBudgetManagement = ({ project }) => {
               type="number"
               value={annualBudget.opex || ''}
               onChange={(e) => setAnnualBudget({ ...annualBudget, opex: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={!isExecutor}
+              className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                !isExecutor ? 'bg-gray-100 cursor-not-allowed' : ''
+              }`}
               placeholder="0"
             />
           </div>
@@ -214,17 +221,22 @@ const ProjectBudgetManagement = ({ project }) => {
               type="number"
               value={annualBudget.capex || ''}
               onChange={(e) => setAnnualBudget({ ...annualBudget, capex: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={!isExecutor}
+              className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                !isExecutor ? 'bg-gray-100 cursor-not-allowed' : ''
+              }`}
               placeholder="0"
             />
           </div>
         </div>
-        <button
-          onClick={handleSaveAnnualBudget}
-          className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-        >
-          {t('budget.saveAnnualBudget', 'Save Annual Budget')}
-        </button>
+        {isExecutor && (
+          <button
+            onClick={handleSaveAnnualBudget}
+            className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+          >
+            {t('budget.saveAnnualBudget', 'Save Annual Budget')}
+          </button>
+        )}
       </div>
 
       {/* 累計表示 */}
@@ -278,7 +290,7 @@ const ProjectBudgetManagement = ({ project }) => {
             <option key={year} value={year}>{year}</option>
           ))}
         </select>
-        {!showForm && (
+        {!showForm && isExecutor && (
           <button
             onClick={() => {
               setFormData({
@@ -458,38 +470,44 @@ const ProjectBudgetManagement = ({ project }) => {
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
                     {entry ? (
-                      <div className="flex space-x-2">
+                      isExecutor ? (
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleEditEntry(entry)}
+                            className="text-indigo-600 hover:text-indigo-700"
+                          >
+                            {t('budget.edit', 'Edit')}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteEntry(entry.id)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            {t('budget.delete', 'Delete')}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">{t('budget.viewOnly', 'View Only')}</span>
+                      )
+                    ) : (
+                      isExecutor && (
                         <button
-                          onClick={() => handleEditEntry(entry)}
+                          onClick={() => {
+                            setFormData({
+                              year: selectedYear,
+                              month: month,
+                              opex_budget: '',
+                              opex_used: '',
+                              capex_budget: '',
+                              capex_used: ''
+                            });
+                            setEditingEntry(null);
+                            setShowForm(true);
+                          }}
                           className="text-indigo-600 hover:text-indigo-700"
                         >
-                          {t('budget.edit', 'Edit')}
+                          {t('budget.add', 'Add')}
                         </button>
-                        <button
-                          onClick={() => handleDeleteEntry(entry.id)}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          {t('budget.delete', 'Delete')}
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setFormData({
-                            year: selectedYear,
-                            month: month,
-                            opex_budget: '',
-                            opex_used: '',
-                            capex_budget: '',
-                            capex_used: ''
-                          });
-                          setEditingEntry(null);
-                          setShowForm(true);
-                        }}
-                        className="text-indigo-600 hover:text-indigo-700"
-                      >
-                        {t('budget.add', 'Add')}
-                      </button>
+                      )
                     )}
                   </td>
                 </tr>
