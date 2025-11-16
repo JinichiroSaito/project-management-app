@@ -515,7 +515,7 @@ const ProjectList = () => {
                       </button>
                     </>
                   )}
-                  {project.application_status === 'approved' && project.requested_amount && parseFloat(project.requested_amount) >= 500000000 && (
+                  {project.application_status === 'approved' && (
                     <button
                       onClick={() => setSelectedProjectForKpi(selectedProjectForKpi?.id === project.id ? null : project)}
                       className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md"
