@@ -249,14 +249,14 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
       // 新しいカラムが存在しない場合、従来のクエリを試行
       console.warn('[My Projects] New columns not found, trying legacy query:', queryError.message);
       try {
-        result = await db.query(
-          `SELECT p.*, 
-                  u1.name as executor_name, u1.email as executor_email,
-                  u2.name as reviewer_name, u2.email as reviewer_email
-           FROM projects p
-           LEFT JOIN users u1 ON p.executor_id = u1.id
-           LEFT JOIN users u2 ON p.reviewer_id = u2.id
-           WHERE p.executor_id = $1
+      result = await db.query(
+        `SELECT p.*, 
+                u1.name as executor_name, u1.email as executor_email,
+                u2.name as reviewer_name, u2.email as reviewer_email
+         FROM projects p
+         LEFT JOIN users u1 ON p.executor_id = u1.id
+         LEFT JOIN users u2 ON p.reviewer_id = u2.id
+         WHERE p.executor_id = $1
            ORDER BY p.created_at DESC`,
           [currentUser.rows[0].id]
         );
@@ -392,9 +392,9 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
       if (hasProjectReviewersTable.rows[0]?.exists) {
         // project_reviewersテーブルが存在する場合
         // より確実な方法：サブクエリを使用して、現在のユーザーが審査者として割り当てられているプロジェクトを取得
-        result = await db.query(
-          `SELECT p.*, 
-                  u1.name as executor_name, u1.email as executor_email,
+      result = await db.query(
+        `SELECT p.*, 
+                u1.name as executor_name, u1.email as executor_email,
                   u2.name as reviewer_name, u2.email as reviewer_email,
                   p.extracted_text,
                   p.extracted_text_updated_at,
@@ -415,9 +415,9 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
                     ),
                     '[]'::json
                   ) as reviewers
-           FROM projects p
-           LEFT JOIN users u1 ON p.executor_id = u1.id
-           LEFT JOIN users u2 ON p.reviewer_id = u2.id
+         FROM projects p
+         LEFT JOIN users u1 ON p.executor_id = u1.id
+         LEFT JOIN users u2 ON p.reviewer_id = u2.id
            WHERE p.application_status = 'submitted'
              AND (
                p.reviewer_id = $1 
@@ -426,7 +426,7 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
                  WHERE pr.project_id = p.id AND pr.reviewer_id = $1
                )
              )
-           ORDER BY p.created_at DESC`,
+         ORDER BY p.created_at DESC`,
           [userId]
         );
       } else {
@@ -763,16 +763,16 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
           // 従来のカラムも存在しない場合
           if (legacyError.message && legacyError.message.includes('column') && legacyError.message.includes('does not exist')) {
             console.error('[Project Create] Database migration required:', legacyError.message);
-            return res.status(500).json({ 
-              error: 'Database migration required',
+        return res.status(500).json({ 
+          error: 'Database migration required',
               message: 'The projects table needs to be updated. Please run migrations or contact an administrator.',
               details: process.env.NODE_ENV === 'development' ? legacyError.message : undefined
-            });
-          }
+        });
+      }
           throw legacyError;
         }
       } else {
-        throw insertError;
+      throw insertError;
       }
     }
     
@@ -816,9 +816,9 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
       });
       // フォールバック: INSERT結果を返す
       return res.status(201).json({
-        ...result.rows[0],
-        created_by: req.user.email
-      });
+      ...result.rows[0],
+      created_by: req.user.email
+    });
     }
     
     console.log('[Project Create] Returning created project:', {
@@ -1079,17 +1079,17 @@ app.put('/api/projects/:id', authenticateToken, upload.single('applicationFile')
       if (updateError.message && updateError.message.includes('column') && updateError.message.includes('does not exist')) {
         console.warn('[Project Update] File columns not found, using legacy format');
         result = await db.query(
-          `UPDATE projects 
-           SET name = COALESCE($1, name), 
-               description = COALESCE($2, description), 
-               status = COALESCE($3, status),
-               requested_amount = COALESCE($4, requested_amount),
-               reviewer_id = COALESCE($5, reviewer_id),
-               application_status = COALESCE($6, application_status),
-               updated_at = CURRENT_TIMESTAMP
-           WHERE id = $7 RETURNING *`,
-          [name, description, status, requested_amount, reviewer_id, application_status, id]
-        );
+      `UPDATE projects 
+       SET name = COALESCE($1, name), 
+           description = COALESCE($2, description), 
+           status = COALESCE($3, status),
+           requested_amount = COALESCE($4, requested_amount),
+           reviewer_id = COALESCE($5, reviewer_id),
+           application_status = COALESCE($6, application_status),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $7 RETURNING *`,
+      [name, description, status, requested_amount, reviewer_id, application_status, id]
+    );
       } else {
         throw updateError;
       }
@@ -1473,8 +1473,8 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, 
       console.log(`[Delete] Updated projects table (set executor_id, reviewer_id, reviewed_by to NULL)`);
       
       // 6. データベースからユーザーを削除
-      const result = await db.query(
-        'DELETE FROM users WHERE id = $1 RETURNING *',
+    const result = await db.query(
+      'DELETE FROM users WHERE id = $1 RETURNING *',
         [userId]
       );
       
@@ -1485,21 +1485,21 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, 
       console.log(`[Delete] User deleted from database: ${email} (id: ${userId})`);
       
       // 7. Firebase Authenticationからも削除
-      try {
-        const app = initializeFirebase();
-        if (app && firebase_uid && firebase_uid !== 'admin-initial') {
-          await admin.auth().deleteUser(firebase_uid);
-          console.log(`[Delete] Firebase user deleted: ${email} (${firebase_uid})`);
-        }
-      } catch (firebaseError) {
-        console.error(`[Delete] Failed to delete Firebase user ${email}:`, firebaseError);
-        // Firebase削除失敗でもデータベース削除は成功とする
+    try {
+      const app = initializeFirebase();
+      if (app && firebase_uid && firebase_uid !== 'admin-initial') {
+        await admin.auth().deleteUser(firebase_uid);
+        console.log(`[Delete] Firebase user deleted: ${email} (${firebase_uid})`);
       }
-      
-      res.json({
-        message: 'User deleted successfully',
-        deletedUser: result.rows[0]
-      });
+    } catch (firebaseError) {
+      console.error(`[Delete] Failed to delete Firebase user ${email}:`, firebaseError);
+      // Firebase削除失敗でもデータベース削除は成功とする
+    }
+    
+    res.json({
+      message: 'User deleted successfully',
+      deletedUser: result.rows[0]
+    });
     } catch (dbError) {
       console.error(`[Delete] Database error during deletion:`, dbError);
       // より詳細なエラーメッセージを返す
@@ -2399,6 +2399,61 @@ app.get('/api/debug/projects', authenticateToken, requireAdmin, async (req, res)
     });
   } catch (error) {
     return handleError(res, error, 'Debug Projects');
+  }
+});
+
+// Admin: Delete all projects
+app.delete('/api/admin/projects/all', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    console.log('[Delete All Projects] Starting deletion of all projects...');
+    
+    // 削除前のプロジェクト数を取得
+    const countResult = await db.query('SELECT COUNT(*) as count FROM projects');
+    const projectCount = parseInt(countResult.rows[0].count);
+    
+    console.log(`[Delete All Projects] Found ${projectCount} projects to delete`);
+    
+    if (projectCount === 0) {
+      return res.json({
+        message: 'No projects to delete',
+        deletedCount: 0
+      });
+    }
+    
+    // 関連データを削除（CASCADEが設定されているが念のため）
+    // 1. project_reviewersテーブルから削除
+    const reviewersResult = await db.query('DELETE FROM project_reviewers RETURNING *');
+    console.log(`[Delete All Projects] Deleted ${reviewersResult.rows.length} project_reviewers entries`);
+    
+    // 2. project_budget_entriesテーブルから削除
+    const budgetEntriesResult = await db.query('DELETE FROM project_budget_entries RETURNING *');
+    console.log(`[Delete All Projects] Deleted ${budgetEntriesResult.rows.length} project_budget_entries`);
+    
+    // 3. kpi_reportsテーブルから削除
+    const kpiReportsResult = await db.query('DELETE FROM kpi_reports RETURNING *');
+    console.log(`[Delete All Projects] Deleted ${kpiReportsResult.rows.length} kpi_reports`);
+    
+    // 4. budget_applicationsテーブルから削除
+    const budgetAppsResult = await db.query('DELETE FROM budget_applications RETURNING *');
+    console.log(`[Delete All Projects] Deleted ${budgetAppsResult.rows.length} budget_applications`);
+    
+    // 5. プロジェクトを削除（CASCADEにより関連データも自動削除されるが、念のため上記で削除済み）
+    const projectsResult = await db.query('DELETE FROM projects RETURNING *');
+    console.log(`[Delete All Projects] Deleted ${projectsResult.rows.length} projects`);
+    
+    res.json({
+      message: 'All projects deleted successfully',
+      deletedCount: projectsResult.rows.length,
+      deletedRelatedData: {
+        project_reviewers: reviewersResult.rows.length,
+        project_budget_entries: budgetEntriesResult.rows.length,
+        kpi_reports: kpiReportsResult.rows.length,
+        budget_applications: budgetAppsResult.rows.length
+      }
+    });
+  } catch (error) {
+    console.error('[Delete All Projects] Error:', error);
+    return handleError(res, error, 'Delete All Projects');
   }
 });
 
