@@ -2457,6 +2457,89 @@ app.delete('/api/admin/projects/all', authenticateToken, requireAdmin, async (re
   }
 });
 
+// Admin: Delete specific project_reviewers entry
+app.delete('/api/admin/project-reviewers/:projectId/:reviewerId', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { projectId, reviewerId } = req.params;
+    
+    console.log(`[Delete Project Reviewer] Deleting project_reviewers entry: project_id=${projectId}, reviewer_id=${reviewerId}`);
+    
+    const result = await db.query(
+      'DELETE FROM project_reviewers WHERE project_id = $1 AND reviewer_id = $2 RETURNING *',
+      [projectId, reviewerId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ 
+        error: 'Project reviewer entry not found',
+        project_id: projectId,
+        reviewer_id: reviewerId
+      });
+    }
+    
+    console.log(`[Delete Project Reviewer] Successfully deleted:`, result.rows[0]);
+    
+    res.json({
+      message: 'Project reviewer entry deleted successfully',
+      deleted: result.rows[0]
+    });
+  } catch (error) {
+    console.error('[Delete Project Reviewer] Error:', error);
+    return handleError(res, error, 'Delete Project Reviewer');
+  }
+});
+
+// Admin: Delete multiple project_reviewers entries
+app.post('/api/admin/project-reviewers/delete-multiple', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { entries } = req.body; // [{ project_id: 102, reviewer_id: 1 }, ...]
+    
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return res.status(400).json({ error: 'Entries array is required and must not be empty' });
+    }
+    
+    console.log(`[Delete Multiple Project Reviewers] Deleting ${entries.length} entries`);
+    
+    const deletedEntries = [];
+    const notFoundEntries = [];
+    
+    for (const entry of entries) {
+      const { project_id, reviewer_id } = entry;
+      
+      if (!project_id || !reviewer_id) {
+        notFoundEntries.push({ ...entry, reason: 'Missing project_id or reviewer_id' });
+        continue;
+      }
+      
+      try {
+        const result = await db.query(
+          'DELETE FROM project_reviewers WHERE project_id = $1 AND reviewer_id = $2 RETURNING *',
+          [project_id, reviewer_id]
+        );
+        
+        if (result.rows.length > 0) {
+          deletedEntries.push(result.rows[0]);
+          console.log(`[Delete Multiple Project Reviewers] Deleted: project_id=${project_id}, reviewer_id=${reviewer_id}`);
+        } else {
+          notFoundEntries.push({ project_id, reviewer_id, reason: 'Entry not found' });
+        }
+      } catch (error) {
+        console.error(`[Delete Multiple Project Reviewers] Error deleting project_id=${project_id}, reviewer_id=${reviewer_id}:`, error);
+        notFoundEntries.push({ project_id, reviewer_id, reason: error.message });
+      }
+    }
+    
+    res.json({
+      message: `Deleted ${deletedEntries.length} out of ${entries.length} entries`,
+      deleted: deletedEntries,
+      notFound: notFoundEntries
+    });
+  } catch (error) {
+    console.error('[Delete Multiple Project Reviewers] Error:', error);
+    return handleError(res, error, 'Delete Multiple Project Reviewers');
+  }
+});
+
 // デバッグ用エンドポイント: project_reviewersテーブルへの移行を実行
 app.post('/api/debug/migrate-reviewers', authenticateToken, requireAdmin, async (req, res) => {
   try {
