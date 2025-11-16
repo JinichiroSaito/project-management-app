@@ -1410,6 +1410,7 @@ app.put('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, res
 app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = parseInt(id);
     
     // 自分自身を削除できないようにチェック
     const currentUser = await db.query(
@@ -1417,14 +1418,14 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, 
       [req.user.email]
     );
     
-    if (currentUser.rows.length > 0 && currentUser.rows[0].id === parseInt(id)) {
+    if (currentUser.rows.length > 0 && currentUser.rows[0].id === userId) {
       return res.status(400).json({ error: 'Cannot delete your own account' });
     }
     
     // 削除するユーザー情報を取得（Firebase UIDが必要）
     const userToDelete = await db.query(
       'SELECT firebase_uid, email FROM users WHERE id = $1',
-      [id]
+      [userId]
     );
     
     if (userToDelete.rows.length === 0) {
@@ -1433,30 +1434,87 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, 
     
     const { firebase_uid, email } = userToDelete.rows[0];
     
-    // データベースから削除
-    const result = await db.query(
-      'DELETE FROM users WHERE id = $1 RETURNING *',
-      [id]
-    );
+    console.log(`[Delete] Starting deletion process for user: ${email} (id: ${userId})`);
     
-    // Firebase Authenticationからも削除
+    // 関連データを削除またはNULLに設定（外部キー制約エラーを回避）
     try {
-      const app = initializeFirebase();
-      if (app && firebase_uid && firebase_uid !== 'admin-initial') {
-        await admin.auth().deleteUser(firebase_uid);
-        console.log(`[Delete] Firebase user deleted: ${email} (${firebase_uid})`);
+      // 1. project_reviewersテーブルから削除（CASCADEが設定されているが念のため）
+      await db.query('DELETE FROM project_reviewers WHERE reviewer_id = $1', [userId]);
+      console.log(`[Delete] Removed from project_reviewers`);
+      
+      // 2. project_budget_entriesテーブルから削除（created_byをNULLに設定できないため削除）
+      await db.query('DELETE FROM project_budget_entries WHERE created_by = $1', [userId]);
+      console.log(`[Delete] Removed project_budget_entries`);
+      
+      // 3. kpi_reportsテーブルから削除（created_byをNULLに設定できないため削除）
+      await db.query('DELETE FROM kpi_reports WHERE created_by = $1', [userId]);
+      console.log(`[Delete] Removed kpi_reports`);
+      
+      // 4. budget_applicationsテーブルから削除（created_byをNULLに設定できないため削除）
+      await db.query('DELETE FROM budget_applications WHERE created_by = $1', [userId]);
+      console.log(`[Delete] Removed budget_applications`);
+      
+      // 5. projectsテーブルの関連フィールドをNULLに設定
+      await db.query(
+        `UPDATE projects 
+         SET executor_id = NULL WHERE executor_id = $1`,
+        [userId]
+      );
+      await db.query(
+        `UPDATE projects 
+         SET reviewer_id = NULL WHERE reviewer_id = $1`,
+        [userId]
+      );
+      await db.query(
+        `UPDATE projects 
+         SET reviewed_by = NULL WHERE reviewed_by = $1`,
+        [userId]
+      );
+      console.log(`[Delete] Updated projects table (set executor_id, reviewer_id, reviewed_by to NULL)`);
+      
+      // 6. データベースからユーザーを削除
+      const result = await db.query(
+        'DELETE FROM users WHERE id = $1 RETURNING *',
+        [userId]
+      );
+      
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found after cleanup' });
       }
-    } catch (firebaseError) {
-      console.error(`[Delete] Failed to delete Firebase user ${email}:`, firebaseError);
-      // Firebase削除失敗でもデータベース削除は成功とする
+      
+      console.log(`[Delete] User deleted from database: ${email} (id: ${userId})`);
+      
+      // 7. Firebase Authenticationからも削除
+      try {
+        const app = initializeFirebase();
+        if (app && firebase_uid && firebase_uid !== 'admin-initial') {
+          await admin.auth().deleteUser(firebase_uid);
+          console.log(`[Delete] Firebase user deleted: ${email} (${firebase_uid})`);
+        }
+      } catch (firebaseError) {
+        console.error(`[Delete] Failed to delete Firebase user ${email}:`, firebaseError);
+        // Firebase削除失敗でもデータベース削除は成功とする
+      }
+      
+      res.json({
+        message: 'User deleted successfully',
+        deletedUser: result.rows[0]
+      });
+    } catch (dbError) {
+      console.error(`[Delete] Database error during deletion:`, dbError);
+      // より詳細なエラーメッセージを返す
+      const isDevelopment = process.env.NODE_ENV === 'development';
+      return res.status(500).json({
+        error: 'Failed to delete user',
+        message: dbError.message,
+        details: isDevelopment ? {
+          code: dbError.code,
+          detail: dbError.detail,
+          hint: dbError.hint,
+          constraint: dbError.constraint
+        } : undefined
+      });
     }
-    
-    console.log(`[Delete] User deleted from database: ${email} (id: ${id})`);
-    
-    res.json({
-      message: 'User deleted successfully',
-      deletedUser: result.rows[0]
-    });
   } catch (error) {
     return handleError(res, error, 'Delete User');
   }
