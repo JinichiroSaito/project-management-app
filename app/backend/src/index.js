@@ -1109,22 +1109,76 @@ app.put('/api/projects/:id', authenticateToken, upload.single('applicationFile')
 });
 
 // Protected endpoint - Delete project
-app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
+app.delete('/api/projects/:id', authenticateToken, requireApproved, async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await db.query(
-      'DELETE FROM projects WHERE id = $1 RETURNING *',
+    
+    // 現在のユーザー情報を取得
+    const currentUser = await db.query(
+      'SELECT id, is_admin FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const isAdmin = currentUser.rows[0].is_admin;
+    
+    // プロジェクト情報を取得
+    const project = await db.query(
+      'SELECT executor_id FROM projects WHERE id = $1',
       [id]
     );
     
-    if (result.rows.length === 0) {
+    if (project.rows.length === 0) {
       return res.status(404).json({ error: 'Project not found' });
     }
     
-    res.json({ 
-      message: 'Project deleted successfully',
-      deleted_by: req.user.email
-    });
+    // 管理者でない場合、実行者であることを確認
+    if (!isAdmin) {
+      const executorId = project.rows[0].executor_id;
+      if (executorId !== currentUser.rows[0].id) {
+        return res.status(403).json({ 
+          error: 'Only project executors or administrators can delete projects' 
+        });
+      }
+    }
+    
+    // 関連データを削除（CASCADEが設定されているが念のため）
+    try {
+      // 1. project_reviewersテーブルから削除
+      await db.query('DELETE FROM project_reviewers WHERE project_id = $1', [id]);
+      
+      // 2. project_budget_entriesテーブルから削除
+      await db.query('DELETE FROM project_budget_entries WHERE project_id = $1', [id]);
+      
+      // 3. kpi_reportsテーブルから削除
+      await db.query('DELETE FROM kpi_reports WHERE project_id = $1', [id]);
+      
+      // 4. budget_applicationsテーブルから削除
+      await db.query('DELETE FROM budget_applications WHERE project_id = $1', [id]);
+      
+      // 5. プロジェクトを削除
+      const result = await db.query(
+        'DELETE FROM projects WHERE id = $1 RETURNING *',
+        [id]
+      );
+      
+      console.log(`[Delete Project] Project ${id} deleted by ${req.user.email} (admin: ${isAdmin})`);
+      
+      res.json({ 
+        message: 'Project deleted successfully',
+        deleted_by: req.user.email,
+        is_admin: isAdmin
+      });
+    } catch (dbError) {
+      console.error(`[Delete Project] Database error:`, dbError);
+      return res.status(500).json({
+        error: 'Failed to delete project',
+        message: dbError.message
+      });
+    }
   } catch (error) {
     return handleError(res, error, 'Delete Project');
   }
