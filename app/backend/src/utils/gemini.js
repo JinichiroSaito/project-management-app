@@ -1,22 +1,26 @@
-// Gemini 3.0対応: @google/genai と @google/generative-ai の両方をサポート
+// Gemini 3.0対応: 現在は@google/generative-aiを使用（@google/genaiは将来対応予定）
+// 環境変数GEMINI_USE_NEW_PACKAGE=trueで@google/genaiを有効化可能
 let GoogleGenAI, GoogleGenerativeAI;
-try {
-  // 新しいパッケージを試す
-  const genaiModule = require('@google/genai');
-  // @google/genaiのエクスポート形式を確認
-  GoogleGenAI = genaiModule.GoogleGenAI || genaiModule.default || genaiModule;
-  if (typeof GoogleGenAI !== 'function' && GoogleGenAI && typeof GoogleGenAI.GoogleGenAI === 'function') {
-    GoogleGenAI = GoogleGenAI.GoogleGenAI;
+const useNewPackageEnv = process.env.GEMINI_USE_NEW_PACKAGE === 'true';
+
+if (useNewPackageEnv) {
+  try {
+    // 新しいパッケージを試す
+    const genaiModule = require('@google/genai');
+    GoogleGenAI = genaiModule.GoogleGenAI;
+    if (!GoogleGenAI || typeof GoogleGenAI !== 'function') {
+      console.warn('[Gemini] @google/genai GoogleGenAI not found, using @google/generative-ai');
+      GoogleGenAI = null;
+    }
+  } catch (e) {
+    console.warn('[Gemini] @google/genai not available, using @google/generative-ai:', e.message);
+    GoogleGenAI = null;
   }
-} catch (e) {
-  console.log('[Gemini] @google/genai not available, using @google/generative-ai');
 }
 
-if (!GoogleGenAI || typeof GoogleGenAI !== 'function') {
-  // フォールバック: 既存のパッケージを使用
-  const generativeAiModule = require('@google/generative-ai');
-  GoogleGenerativeAI = generativeAiModule.GoogleGenerativeAI;
-}
+// 既存のパッケージを使用（デフォルト）
+const generativeAiModule = require('@google/generative-ai');
+GoogleGenerativeAI = generativeAiModule.GoogleGenerativeAI;
 
 const { Storage } = require('@google-cloud/storage');
 const pdfParse = require('pdf-parse');
@@ -34,8 +38,8 @@ function initializeGemini() {
       throw new Error('GEMINI_API_KEY environment variable is not set');
     }
     
-    // 新しいパッケージが利用可能な場合
-    if (GoogleGenAI) {
+    // 環境変数で新しいパッケージの使用が有効化されている場合のみ試す
+    if (useNewPackageEnv && GoogleGenAI) {
       try {
         genAI = new GoogleGenAI({ apiKey });
         useNewPackage = true;
@@ -47,7 +51,7 @@ function initializeGemini() {
         console.log('✓ Gemini API initialized with @google/generative-ai');
       }
     } else {
-      // フォールバック: 既存のパッケージを使用
+      // デフォルト: 既存のパッケージを使用（安定版）
       genAI = new GoogleGenerativeAI(apiKey);
       useNewPackage = false;
       console.log('✓ Gemini API initialized with @google/generative-ai');
@@ -253,54 +257,16 @@ async function checkMissingSections(extractedText) {
     initializeGemini();
     
     // 環境変数でモデル名を指定可能
-    // Gemini 3.0対応: gemini-3.0-pro, gemini-3.0-flash, gemini-3-pro-preview など
-    // デフォルト: 新しいパッケージの場合はgemini-3.0-pro、古いパッケージの場合はgemini-2.5-flash
-    const defaultModel = useNewPackage ? 'gemini-3.0-pro' : 'gemini-2.5-flash';
-    const modelName = process.env.GEMINI_MODEL_NAME || defaultModel;
+    // デフォルト: gemini-2.5-flash（安定版）
+    // Gemini 3.0モデル（gemini-3.0-pro, gemini-3.0-flashなど）は@google/generative-aiでも利用可能な場合があります
+    const modelName = process.env.GEMINI_MODEL_NAME || 'gemini-2.5-flash';
     console.log(`[Check Missing Sections] Using Gemini model: ${modelName} (package: ${useNewPackage ? '@google/genai' : '@google/generative-ai'})`);
     
-    let model;
-    try {
-      if (useNewPackage) {
-        // 新しいパッケージの使用方法（提供されたコード例に基づく）
-        // genAI.models.generateContent または genAI.models.getGenerativeModel を使用
-        if (genAI.models && typeof genAI.models.getGenerativeModel === 'function') {
-          model = genAI.models.getGenerativeModel({ model: modelName });
-        } else if (genAI.models && typeof genAI.models.generateContent === 'function') {
-          // 直接generateContentを使用する場合
-          model = { generateContent: (options) => genAI.models.generateContent(options) };
-        } else {
-          throw new Error('Unsupported @google/genai API format');
-        }
-      } else {
-        // 既存のパッケージの使用方法
-        model = genAI.getGenerativeModel({ model: modelName });
-      }
-    } catch (modelError) {
-      console.error(`[Check Missing Sections] Error with model ${modelName}:`, modelError.message);
-      // モデルが存在しない場合、フォールバック
-      const fallbackModel = 'gemini-2.5-flash';
-      if (modelName !== fallbackModel) {
-        console.log(`[Check Missing Sections] Falling back to ${fallbackModel}`);
-        if (useNewPackage) {
-          if (genAI.models && typeof genAI.models.getGenerativeModel === 'function') {
-            model = genAI.models.getGenerativeModel({ model: fallbackModel });
-          } else {
-            // 新しいパッケージが動作しない場合、古いパッケージにフォールバック
-            console.log('[Check Missing Sections] Falling back to @google/generative-ai');
-            useNewPackage = false;
-            const generativeAiModule = require('@google/generative-ai');
-            const GoogleGenerativeAI = generativeAiModule.GoogleGenerativeAI;
-            const apiKey = process.env.GEMINI_API_KEY;
-            genAI = new GoogleGenerativeAI(apiKey);
-            model = genAI.getGenerativeModel({ model: fallbackModel });
-          }
-        } else {
-          model = genAI.getGenerativeModel({ model: fallbackModel });
-        }
-      } else {
-        throw modelError;
-      }
+    // 新しいパッケージの場合は直接genAI.models.generateContentを使用
+    let useDirectAPI = false;
+    if (useNewPackage && genAI.models && typeof genAI.models.generateContent === 'function') {
+      useDirectAPI = true;
+      console.log('[Check Missing Sections] Using direct API: genAI.models.generateContent');
     }
     
     const prompt = `以下の新規事業構想書（MVP開発承認申請書）のテキストを分析し、MVP開発承認における必要事項の基準に基づいて評価してください。
@@ -462,43 +428,59 @@ ${extractedText}`;
     console.log('[Check Missing Sections] Sending request to Gemini API...');
     let result, responseText;
     
-    if (useNewPackage) {
-      // 新しいパッケージの使用方法（提供されたコード例に基づく）
+    if (useDirectAPI) {
+      // @google/genaiの直接APIを使用（提供されたコード例に基づく）
       try {
-        // 方法1: model.generateContent({ contents: [prompt] })
-        if (typeof model.generateContent === 'function') {
-          result = await model.generateContent({ contents: [prompt] });
-          // レスポンスの形式を確認
-          if (result.response && typeof result.response.text === 'function') {
+        console.log(`[Check Missing Sections] Calling genAI.models.generateContent with model: ${modelName}`);
+        result = await genAI.models.generateContent({
+          model: modelName,
+          contents: [prompt]
+        });
+        
+        // レスポンスの形式を確認
+        console.log('[Check Missing Sections] Response received, type:', typeof result);
+        console.log('[Check Missing Sections] Response keys:', Object.keys(result || {}));
+        
+        // レスポンスからテキストを抽出
+        if (result && result.response) {
+          if (typeof result.response.text === 'function') {
             responseText = result.response.text();
-          } else if (result.text && typeof result.text === 'function') {
-            responseText = await result.text();
-          } else if (typeof result === 'string') {
-            responseText = result;
-          } else if (result.response && typeof result.response === 'string') {
+          } else if (typeof result.response === 'string') {
             responseText = result.response;
-          } else {
-            // 直接genAI.models.generateContentを使用
-            result = await genAI.models.generateContent({
-              model: modelName,
-              contents: [prompt]
-            });
-            responseText = result.response?.text() || result.text() || result;
+          } else if (result.response.text) {
+            responseText = result.response.text;
           }
+        } else if (result && typeof result.text === 'function') {
+          responseText = await result.text();
+        } else if (result && typeof result === 'string') {
+          responseText = result;
+        } else if (result && result.text) {
+          responseText = result.text;
         } else {
-          // 直接genAI.models.generateContentを使用
-          result = await genAI.models.generateContent({
-            model: modelName,
-            contents: [prompt]
-          });
-          responseText = result.response?.text() || result.text() || result;
+          throw new Error('Unexpected response format from @google/genai');
         }
+        
+        console.log(`[Check Missing Sections] Extracted text length: ${responseText?.length || 0}`);
       } catch (apiError) {
-        console.error('[Check Missing Sections] Error with new package API:', apiError.message);
-        throw apiError;
+        console.error('[Check Missing Sections] Error with @google/genai API:', apiError.message);
+        console.error('[Check Missing Sections] Error stack:', apiError.stack);
+        // フォールバック: 古いパッケージに戻す
+        console.log('[Check Missing Sections] Falling back to @google/generative-ai');
+        useNewPackage = false;
+        useDirectAPI = false;
+        const generativeAiModule = require('@google/generative-ai');
+        const GoogleGenerativeAI = generativeAiModule.GoogleGenerativeAI;
+        const apiKey = process.env.GEMINI_API_KEY;
+        genAI = new GoogleGenerativeAI(apiKey);
+        const fallbackModel = 'gemini-2.5-flash';
+        const model = genAI.getGenerativeModel({ model: fallbackModel });
+        result = await model.generateContent(prompt);
+        const response = await result.response;
+        responseText = response.text();
       }
     } else {
       // 既存のパッケージの使用方法
+      const model = genAI.getGenerativeModel({ model: modelName });
       result = await model.generateContent(prompt);
       const response = await result.response;
       responseText = response.text();
