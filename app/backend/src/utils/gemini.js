@@ -215,10 +215,24 @@ async function checkMissingSections(extractedText) {
   try {
     initializeGemini();
     
-    // 環境変数でモデル名を指定可能（デフォルト: gemini-3.0-flash）
-    const modelName = process.env.GEMINI_MODEL_NAME || 'gemini-3.0-flash';
+    // 環境変数でモデル名を指定可能（デフォルト: gemini-2.5-flash）
+    // Gemini 3.0が利用可能になったら、GEMINI_MODEL_NAME環境変数で指定可能
+    const modelName = process.env.GEMINI_MODEL_NAME || 'gemini-2.5-flash';
     console.log(`[Check Missing Sections] Using Gemini model: ${modelName}`);
-    const model = genAI.getGenerativeModel({ model: modelName });
+    
+    let model;
+    try {
+      model = genAI.getGenerativeModel({ model: modelName });
+    } catch (modelError) {
+      console.error(`[Check Missing Sections] Error with model ${modelName}:`, modelError.message);
+      // モデルが存在しない場合、gemini-2.5-flashにフォールバック
+      if (modelName !== 'gemini-2.5-flash') {
+        console.log('[Check Missing Sections] Falling back to gemini-2.5-flash');
+        model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      } else {
+        throw modelError;
+      }
+    }
     
     const prompt = `以下の新規事業構想書（MVP開発承認申請書）のテキストを分析し、MVP開発承認における必要事項の基準に基づいて評価してください。
 
@@ -376,9 +390,12 @@ async function checkMissingSections(extractedText) {
 テキスト:
 ${extractedText}`;
 
+    console.log('[Check Missing Sections] Sending request to Gemini API...');
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const responseText = response.text();
+    
+    console.log(`[Check Missing Sections] Received response (${responseText.length} characters)`);
     
     // JSONを抽出（マークダウンコードブロックから）
     let jsonText = responseText;
@@ -393,17 +410,20 @@ ${extractedText}`;
       }
     }
     
+    console.log('[Check Missing Sections] Parsing JSON response...');
     const analysisResult = JSON.parse(jsonText);
+    console.log('[Check Missing Sections] Analysis completed successfully');
     return analysisResult;
   } catch (error) {
-    console.error('Error checking missing sections:', error);
-    // JSONパースエラーの場合、フォールバック
-    return {
-      missing_sections: [],
-      completeness_score: 0,
-      recommendations: ['分析中にエラーが発生しました'],
-      error: error.message
-    };
+    console.error('[Check Missing Sections] Error checking missing sections:', error);
+    console.error('[Check Missing Sections] Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    
+    // エラーを再スローして、呼び出し元で適切に処理できるようにする
+    throw new Error(`Gemini API error: ${error.message}`);
   }
 }
 

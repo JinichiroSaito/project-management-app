@@ -1166,9 +1166,9 @@ app.delete('/api/projects/:id', authenticateToken, requireApproved, async (req, 
       );
       
       console.log(`[Delete Project] Project ${id} deleted by ${req.user.email} (admin: ${isAdmin})`);
-      
-      res.json({ 
-        message: 'Project deleted successfully',
+    
+    res.json({ 
+      message: 'Project deleted successfully',
         deleted_by: req.user.email,
         is_admin: isAdmin
       });
@@ -2856,7 +2856,17 @@ app.post('/api/projects/:id/check-missing-sections', authenticateToken, requireA
     }
     
     // 不足部分をチェック
+    console.log(`[Check Missing Sections API] Starting analysis for project ${id}`);
     const analysisResult = await checkMissingSections(projectData.extracted_text);
+    
+    if (!analysisResult) {
+      console.error('[Check Missing Sections API] No analysis result returned');
+      return res.status(500).json({ 
+        error: 'Analysis completed but no results were returned. Please try again.' 
+      });
+    }
+    
+    console.log(`[Check Missing Sections API] Analysis completed, saving to database...`);
     
     // データベースに保存
     await db.query(
@@ -2867,12 +2877,15 @@ app.post('/api/projects/:id/check-missing-sections', authenticateToken, requireA
       [JSON.stringify(analysisResult), id]
     );
     
+    console.log(`[Check Missing Sections API] Successfully saved analysis result`);
+    
     res.json({
       success: true,
       analysis: analysisResult,
       message: 'Missing sections checked successfully'
     });
   } catch (error) {
+    console.error('[Check Missing Sections API] Error:', error);
     return handleError(res, error, 'Check Missing Sections');
   }
 });

@@ -343,6 +343,7 @@ export const translations = {
     'projectApplication.sectionsChecked': 'Missing sections checked successfully',
     'projectApplication.error.extractText': 'Failed to extract text',
     'projectApplication.error.checkSections': 'Failed to check missing sections',
+    'projectApplication.error.noAnalysisResult': 'Analysis completed but no results were returned',
   },
   ja: {
     // Login
@@ -688,6 +689,7 @@ export const translations = {
     'projectApplication.sectionsChecked': '不足セクションのチェックが完了しました',
     'projectApplication.error.extractText': 'テキストの抽出に失敗しました',
     'projectApplication.error.checkSections': '不足セクションのチェックに失敗しました',
+    'projectApplication.error.noAnalysisResult': '分析は完了しましたが、結果が返されませんでした',
     
     // Projects
     'projects.myProjects': 'マイプロジェクト',

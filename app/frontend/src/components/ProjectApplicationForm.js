@@ -349,11 +349,17 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
       setCheckingSections(true);
       setError('');
       const response = await api.post(`/api/projects/${project.id}/check-missing-sections`);
-      setMissingSections(response.data.analysis);
-      alert(t('projectApplication.sectionsChecked', 'Missing sections checked successfully'));
+      if (response.data.analysis) {
+        setMissingSections(response.data.analysis);
+        alert(t('projectApplication.sectionsChecked', 'Missing sections checked successfully'));
+      } else {
+        setError(t('projectApplication.error.noAnalysisResult', 'Analysis completed but no results were returned'));
+      }
     } catch (error) {
       console.error('Error checking missing sections:', error);
-      setError(error.response?.data?.error || t('projectApplication.error.checkSections', 'Failed to check missing sections'));
+      const errorMessage = error.response?.data?.error || error.message || t('projectApplication.error.checkSections', 'Failed to check missing sections');
+      setError(errorMessage);
+      alert(errorMessage);
     } finally {
       setCheckingSections(false);
     }
