@@ -215,7 +215,10 @@ async function checkMissingSections(extractedText) {
   try {
     initializeGemini();
     
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    // 環境変数でモデル名を指定可能（デフォルト: gemini-3.0-flash）
+    const modelName = process.env.GEMINI_MODEL_NAME || 'gemini-3.0-flash';
+    console.log(`[Check Missing Sections] Using Gemini model: ${modelName}`);
+    const model = genAI.getGenerativeModel({ model: modelName });
     
     const prompt = `以下の新規事業構想書（MVP開発承認申請書）のテキストを分析し、MVP開発承認における必要事項の基準に基づいて評価してください。
 
