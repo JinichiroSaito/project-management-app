@@ -308,6 +308,8 @@ export const translations = {
     'projectApplication.file.download': 'Download current file',
     'projectApplication.file.invalidType': 'Only PPT and PDF files are allowed',
     'projectApplication.file.tooLarge': 'File size must be less than 50MB',
+    'projectApplication.file.pptTooLarge': 'PPT files larger than 20MB cannot be processed. Please convert to PDF format and upload.',
+    'projectApplication.file.requirement.4': 'Note: PPT files larger than 20MB cannot be processed. Please use PDF format for files larger than 20MB.',
     'projectApplication.uploadedFile': 'Uploaded File',
     
     // Document Analysis
@@ -646,6 +648,8 @@ export const translations = {
     'projectApplication.file.download': '現在のファイルをダウンロード',
     'projectApplication.file.invalidType': 'PPTとPDFファイルのみ許可されています',
     'projectApplication.file.tooLarge': 'ファイルサイズは50MB未満である必要があります',
+    'projectApplication.file.pptTooLarge': '20MB以上のPPTファイルは処理できません。PDF形式に変換してからアップロードしてください。',
+    'projectApplication.file.requirement.4': '注意：20MB以上のPPTファイルは処理できません。20MB以上のファイルはPDF形式でアップロードしてください。',
     'projectApplication.uploadedFile': 'アップロードされたファイル',
     
     // Document Analysis

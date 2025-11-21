@@ -278,6 +278,18 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
         return;
       }
       
+      // 20MB以上のPPTファイルは読み込めないため、PDFを推奨
+      const isPPT = fileExtension === '.ppt' || fileExtension === '.pptx' || fileExtension === '.pptm' ||
+                    file.type === 'application/vnd.ms-powerpoint' ||
+                    file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+                    file.type === 'application/vnd.ms-powerpoint.presentation.macroEnabled.12';
+      const fileSizeMB = file.size / (1024 * 1024);
+      
+      if (isPPT && fileSizeMB >= 20) {
+        setError(t('projectApplication.file.pptTooLarge', 'PPT files larger than 20MB cannot be processed. Please convert to PDF format and upload.'));
+        return;
+      }
+      
       setSelectedFile(file);
       setError('');
     }
@@ -400,6 +412,7 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
                 <li>{t('projectApplication.file.requirement.1', 'File format: PPT (.ppt, .pptx, .pptm) or PDF (.pdf)')}</li>
                 <li>{t('projectApplication.file.requirement.2', 'Maximum file size: 50MB')}</li>
                 <li>{t('projectApplication.file.requirement.3', 'The document should include all required sections (2-10)')}</li>
+                <li className="text-orange-700 font-medium">{t('projectApplication.file.requirement.4', 'Note: PPT files larger than 20MB cannot be processed. Please use PDF format for files larger than 20MB.')}</li>
               </ul>
             </div>
             
