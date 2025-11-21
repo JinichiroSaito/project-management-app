@@ -204,21 +204,23 @@ const ProjectBudgetManagement = ({ project }) => {
         </div>
       )}
 
+      {/* プロジェクト全体の申請金額 */}
+      {project?.requested_amount && (
+        <div className="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+          <p className="text-xs text-gray-600 mb-1">
+            {t('budget.projectRequestedAmount', 'Project Requested Amount')}
+          </p>
+          <p className="text-lg font-medium text-gray-900">
+            {formatAmount(parseFloat(project.requested_amount) || 0)}
+          </p>
+        </div>
+      )}
+
       {/* 年間予算設定 */}
       <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
         <h4 className="text-sm font-medium text-blue-900 mb-3">
           {t('budget.annualBudget', 'Annual Budget')}
         </h4>
-        {project?.requested_amount && (
-          <div className="mb-3 p-2 bg-white rounded border border-blue-300">
-            <p className="text-xs text-gray-600 mb-1">
-              {t('budget.requestedAmount', 'Requested Amount')}
-            </p>
-            <p className="text-sm font-medium text-gray-900">
-              {formatAmount(parseFloat(project.requested_amount) || 0)}
-            </p>
-          </div>
-        )}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
