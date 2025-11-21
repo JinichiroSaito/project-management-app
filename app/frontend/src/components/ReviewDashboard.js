@@ -365,12 +365,12 @@ const ReviewDashboard = () => {
                         {missingSections.missing_sections.slice(0, 3).map((section, index) => (
                           <li key={index}>
                             {section.section_number}. {section.section_name}
-                            {section.is_missing && <span className="text-red-600 ml-1">(不足)</span>}
-                            {section.is_incomplete && <span className="text-orange-600 ml-1">(不完全)</span>}
+                            {section.is_missing && <span className="text-red-600 ml-1">({t('projectApplication.analysis.missing', 'Missing')})</span>}
+                            {section.is_incomplete && <span className="text-orange-600 ml-1">({t('projectApplication.analysis.incomplete', 'Incomplete')})</span>}
                           </li>
                         ))}
                         {missingSections.missing_sections.length > 3 && (
-                          <li className="text-gray-600">...他 {missingSections.missing_sections.length - 3}件</li>
+                          <li className="text-gray-600">{t('projectApplication.analysis.others', '...and {count} more', { count: missingSections.missing_sections.length - 3 })}</li>
                         )}
                       </ul>
                     </div>
@@ -386,7 +386,7 @@ const ReviewDashboard = () => {
                           <li key={index} className="list-disc list-inside">{issue}</li>
                         ))}
                         {missingSections.critical_issues.length > 2 && (
-                          <li className="text-gray-600">...他 {missingSections.critical_issues.length - 2}件</li>
+                          <li className="text-gray-600">{t('projectApplication.analysis.others', '...and {count} more', { count: missingSections.critical_issues.length - 2 })}</li>
                         )}
                       </ul>
                     </div>
@@ -402,7 +402,7 @@ const ReviewDashboard = () => {
                           <li key={index} className="list-disc list-inside">{strength}</li>
                         ))}
                         {missingSections.strengths.length > 2 && (
-                          <li className="text-gray-600">...他 {missingSections.strengths.length - 2}件</li>
+                          <li className="text-gray-600">{t('projectApplication.analysis.others', '...and {count} more', { count: missingSections.strengths.length - 2 })}</li>
                         )}
                       </ul>
                     </div>

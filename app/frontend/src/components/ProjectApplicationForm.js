@@ -545,8 +545,8 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
                                   <div className="mb-1">
                                     <strong>
                                       {section.section_number}. {section.section_name}
-                                      {section.is_missing && <span className="ml-2 text-red-600">(不足)</span>}
-                                      {section.is_incomplete && <span className="ml-2 text-orange-600">(不完全)</span>}
+                                      {section.is_missing && <span className="ml-2 text-red-600">({t('projectApplication.analysis.missing', 'Missing')})</span>}
+                                      {section.is_incomplete && <span className="ml-2 text-orange-600">({t('projectApplication.analysis.incomplete', 'Incomplete')})</span>}
                                     </strong>
                                   </div>
                                   {section.reason && (

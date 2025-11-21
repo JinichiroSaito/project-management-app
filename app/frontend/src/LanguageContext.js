@@ -23,10 +23,19 @@ export const LanguageProvider = ({ children }) => {
     localStorage.setItem('language', language);
   }, [language]);
 
-  const t = (key, params = {}) => {
-    let text = translations[language]?.[key] || key;
+  const t = (key, defaultValueOrParams = {}) => {
+    // 第2引数が文字列の場合はデフォルト値として扱う
+    let defaultText = null;
+    let params = {};
+    if (typeof defaultValueOrParams === 'string') {
+      defaultText = defaultValueOrParams;
+    } else if (typeof defaultValueOrParams === 'object' && defaultValueOrParams !== null) {
+      params = defaultValueOrParams;
+    }
+    
+    let text = translations[language]?.[key] || defaultText || key;
     // パラメータ置換（例: {title} -> params.title）
-    if (params && typeof text === 'string') {
+    if (params && typeof text === 'string' && Object.keys(params).length > 0) {
       Object.keys(params).forEach(paramKey => {
         text = text.replace(new RegExp(`\\{${paramKey}\\}`, 'g'), params[paramKey]);
       });
