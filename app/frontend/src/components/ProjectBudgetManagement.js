@@ -65,6 +65,18 @@ const ProjectBudgetManagement = ({ project }) => {
 
   const handleSaveAnnualBudget = async () => {
     if (!project?.id) return;
+    
+    // 申請金額に対するバリデーション
+    const requestedAmount = parseFloat(project.requested_amount) || 0;
+    const opexBudget = parseFloat(annualBudget.opex) || 0;
+    const capexBudget = parseFloat(annualBudget.capex) || 0;
+    const totalBudget = opexBudget + capexBudget;
+    
+    if (requestedAmount > 0 && totalBudget > requestedAmount) {
+      alert(t('budget.error.exceedsRequestedAmount', 'The sum of OPEX and CAPEX budgets exceeds the requested amount. Please adjust the budgets.'));
+      return;
+    }
+    
     try {
       await api.put(`/api/projects/${project.id}/annual-budget`, {
         annual_opex_budget: annualBudget.opex,
@@ -197,6 +209,16 @@ const ProjectBudgetManagement = ({ project }) => {
         <h4 className="text-sm font-medium text-blue-900 mb-3">
           {t('budget.annualBudget', 'Annual Budget')}
         </h4>
+        {project?.requested_amount && (
+          <div className="mb-3 p-2 bg-white rounded border border-blue-300">
+            <p className="text-xs text-gray-600 mb-1">
+              {t('budget.requestedAmount', 'Requested Amount')}
+            </p>
+            <p className="text-sm font-medium text-gray-900">
+              {formatAmount(parseFloat(project.requested_amount) || 0)}
+            </p>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -229,6 +251,26 @@ const ProjectBudgetManagement = ({ project }) => {
             />
           </div>
         </div>
+        {project?.requested_amount && (
+          <div className="mt-3 p-2 bg-white rounded border border-gray-300">
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-gray-600">
+                {t('budget.totalBudget', 'Total Budget (OPEX + CAPEX)')}
+              </span>
+              <span className={`text-sm font-medium ${
+                (parseFloat(annualBudget.opex) || 0) + (parseFloat(annualBudget.capex) || 0) > (parseFloat(project.requested_amount) || 0)
+                  ? 'text-red-600' : 'text-gray-900'
+              }`}>
+                {formatAmount((parseFloat(annualBudget.opex) || 0) + (parseFloat(annualBudget.capex) || 0))}
+              </span>
+            </div>
+            {(parseFloat(annualBudget.opex) || 0) + (parseFloat(annualBudget.capex) || 0) > (parseFloat(project.requested_amount) || 0) && (
+              <p className="text-xs text-red-600 mt-1">
+                {t('budget.error.exceedsRequestedAmount', 'The sum of OPEX and CAPEX budgets exceeds the requested amount. Please adjust the budgets.')}
+              </p>
+            )}
+          </div>
+        )}
         {isExecutor && (
           <button
             onClick={handleSaveAnnualBudget}

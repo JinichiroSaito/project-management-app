@@ -2150,7 +2150,7 @@ app.put('/api/projects/:id/annual-budget', authenticateToken, requireApproved, a
     
     // プロジェクトの存在確認と権限確認
     const project = await db.query(
-      'SELECT executor_id, application_status FROM projects WHERE id = $1',
+      'SELECT executor_id, application_status, requested_amount FROM projects WHERE id = $1',
       [id]
     );
     
@@ -2176,6 +2176,18 @@ app.put('/api/projects/:id/annual-budget', authenticateToken, requireApproved, a
     
     if (!isExecutor) {
       return res.status(403).json({ error: 'Only project executors can update annual budget' });
+    }
+    
+    // 申請金額に対するバリデーション
+    const requestedAmount = parseFloat(project.rows[0].requested_amount) || 0;
+    const opexBudget = annual_opex_budget !== undefined ? parseFloat(annual_opex_budget) : 0;
+    const capexBudget = annual_capex_budget !== undefined ? parseFloat(annual_capex_budget) : 0;
+    const totalBudget = opexBudget + capexBudget;
+    
+    if (requestedAmount > 0 && totalBudget > requestedAmount) {
+      return res.status(400).json({ 
+        error: `The sum of OPEX and CAPEX budgets (${totalBudget.toLocaleString()}) exceeds the requested amount (${requestedAmount.toLocaleString()})` 
+      });
     }
     
     const result = await db.query(
