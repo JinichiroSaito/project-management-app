@@ -207,12 +207,35 @@ const ProjectBudgetManagement = ({ project }) => {
       {/* プロジェクト全体の申請金額 */}
       {project?.requested_amount && (
         <div className="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
-          <p className="text-xs text-gray-600 mb-1">
-            {t('budget.projectRequestedAmount', 'Project Requested Amount')}
-          </p>
-          <p className="text-lg font-medium text-gray-900">
-            {formatAmount(parseFloat(project.requested_amount) || 0)}
-          </p>
+          <div className="mb-3">
+            <p className="text-xs text-gray-600 mb-1">
+              {t('budget.projectRequestedAmount', 'Project Requested Amount')}
+            </p>
+            <p className="text-lg font-medium text-gray-900">
+              {formatAmount(parseFloat(project.requested_amount) || 0)}
+            </p>
+          </div>
+          <div className="pt-3 border-t border-indigo-300">
+            <div className="flex justify-between items-center mb-2">
+              <p className="text-xs text-gray-600">
+                {t('budget.totalUsed', 'Total Used (OPEX + CAPEX)')}
+              </p>
+              <p className="text-sm font-medium text-gray-900">
+                {formatAmount((cumulative.opex_used || 0) + (cumulative.capex_used || 0))}
+              </p>
+            </div>
+            <div className="flex justify-between items-center">
+              <p className="text-xs text-gray-600">
+                {t('budget.remainingFromRequested', 'Remaining from Requested Amount')}
+              </p>
+              <p className={`text-base font-medium ${
+                (parseFloat(project.requested_amount) || 0) - ((cumulative.opex_used || 0) + (cumulative.capex_used || 0)) < 0
+                  ? 'text-red-600' : 'text-green-600'
+              }`}>
+                {formatAmount((parseFloat(project.requested_amount) || 0) - ((cumulative.opex_used || 0) + (cumulative.capex_used || 0)))}
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
