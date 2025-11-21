@@ -332,15 +332,17 @@ const ProjectList = () => {
               {t('projects.created')}: {new Date(project.created_at).toLocaleDateString()}
             </div>
             
-            {/* ファイルアップロード情報 */}
-            {project.application_file_name && (
+            {/* ファイルアップロード情報と分析ボタン */}
+            {(project.application_file_name || project.application_file_url || project.missing_sections) && (
               <div className="mt-3 pt-3 border-t border-gray-200">
-                <div className="text-xs text-gray-600 mb-2">
-                  <span className="font-medium">{t('projectApplication.uploadedFile', 'Uploaded File')}: </span>
-                  {project.application_file_name}
-                </div>
-                {project.application_file_url && (
-                  <div className="flex space-x-2">
+                {project.application_file_name && (
+                  <div className="text-xs text-gray-600 mb-2">
+                    <span className="font-medium">{t('projectApplication.uploadedFile', 'Uploaded File')}: </span>
+                    {project.application_file_name}
+                  </div>
+                )}
+                <div className="flex space-x-2">
+                  {project.application_file_url && (
                     <button
                       type="button"
                       onClick={async () => {
@@ -362,6 +364,8 @@ const ProjectList = () => {
                     >
                       {t('projectApplication.analysis.extract', 'Extract Text with Gemini')}
                     </button>
+                  )}
+                  {(project.application_file_url || project.missing_sections) && (
                     <button
                       type="button"
                       onClick={async () => {
@@ -383,8 +387,8 @@ const ProjectList = () => {
                     >
                       {t('projectApplication.analysis.checkSections', 'Check Missing Sections')}
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
             
