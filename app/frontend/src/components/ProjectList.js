@@ -13,6 +13,7 @@ const ProjectList = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
   const [selectedProjectForKpi, setSelectedProjectForKpi] = useState(null);
+  const [selectedProjectForBudget, setSelectedProjectForBudget] = useState(null);
   const { user, userInfo } = useAuth();
   const { t } = useLanguage();
   
@@ -516,12 +517,20 @@ const ProjectList = () => {
                     </>
                   )}
                   {project.application_status === 'approved' && (
-                    <button
-                      onClick={() => setSelectedProjectForKpi(selectedProjectForKpi?.id === project.id ? null : project)}
-                      className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md"
-                    >
-                      {selectedProjectForKpi?.id === project.id ? t('kpi.hideReports', 'Hide KPI Reports') : t('kpi.showReports', 'Manage KPI Reports')}
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setSelectedProjectForKpi(selectedProjectForKpi?.id === project.id ? null : project)}
+                        className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md"
+                      >
+                        {selectedProjectForKpi?.id === project.id ? t('kpi.hideReports', 'Hide KPI Reports') : t('kpi.showReports', 'Manage KPI Reports')}
+                      </button>
+                      <button
+                        onClick={() => setSelectedProjectForBudget(selectedProjectForBudget?.id === project.id ? null : project)}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md"
+                      >
+                        {selectedProjectForBudget?.id === project.id ? t('budget.hideBudget', 'Hide Budget Management') : t('budget.showBudget', 'Manage Budget')}
+                      </button>
+                    </>
                   )}
                   {canDeleteProject(project) && (
                     <button
@@ -535,11 +544,11 @@ const ProjectList = () => {
                 {selectedProjectForKpi?.id === project.id && (
                   <div className="mt-4 border-t pt-4">
                     <ProjectKpiReports project={selectedProjectForKpi} />
-                    {selectedProjectForKpi?.application_status === 'approved' && (
-                      <div className="mt-6">
-                        <ProjectBudgetManagement project={selectedProjectForKpi} />
-                      </div>
-                    )}
+                  </div>
+                )}
+                {selectedProjectForBudget?.id === project.id && (
+                  <div className="mt-4 border-t pt-4">
+                    <ProjectBudgetManagement project={selectedProjectForBudget} />
                   </div>
                 )}
               </div>
