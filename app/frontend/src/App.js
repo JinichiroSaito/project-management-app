@@ -80,7 +80,7 @@ function AppContentInner() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
-      {(isAdmin || isReviewer || isExecutor) && (
+      {(isAdmin || isReviewer) && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex space-x-4 flex-wrap">
             {isAdmin && (
@@ -115,7 +115,7 @@ function AppContentInner() {
                 {showReview ? t('review.hideDashboard', 'Hide Review Dashboard') : t('review.showDashboard', 'Show Review Dashboard')}
               </button>
             )}
-            {(isAdmin || isReviewer || isExecutor) && (
+            {(isAdmin || isReviewer) && (
               <button
                 onClick={() => {
                   setShowApprovedDashboard(!showApprovedDashboard);
