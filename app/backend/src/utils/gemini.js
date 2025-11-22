@@ -614,6 +614,19 @@ NBDの事業創出プロセスは、おおよそ次のステップで進む。
 
 **重要な注意**: ユーザーが一度に複数の質問や情報を提供した場合でも、最も優先度の高いものから一つずつ対応してください。一度にすべてに答えるのではなく、一つずつ丁寧に対応することが重要です。`;
 
+    // ユーザーがアップロードしたドキュメントの内容を追加
+    let documentContext = '';
+    if (userDocumentText && userDocumentText.trim().length > 0) {
+      // テキストが長すぎる場合は最初の部分のみ使用（約8000文字まで）
+      const maxLength = 8000;
+      const truncatedText = userDocumentText.length > maxLength 
+        ? userDocumentText.substring(0, maxLength) + '\n\n[以下省略...]'
+        : userDocumentText;
+      
+      documentContext = `\n\n## ユーザーがアップロードした申請書類の内容\n\n以下の内容は、ユーザーがアップロードしたPPT/PDFファイルから抽出されたテキストです。この内容を理解して、質問に答えてください。\n\n---\n${truncatedText}\n---\n\n`;
+      console.log('[Business Advisor Chat] Added document context to prompt');
+    }
+
     // 会話履歴を構築
     let conversationContext = '';
     if (conversationHistory && conversationHistory.length > 0) {
@@ -623,7 +636,7 @@ NBDの事業創出プロセスは、おおよそ次のステップで進む。
       }).join('\n\n') + '\n\n';
     }
 
-    const fullPrompt = `${systemPrompt}\n\n${conversationContext}ユーザー: ${message}\n\nアドバイザー:`;
+    const fullPrompt = `${systemPrompt}${documentContext}\n\n${conversationContext}ユーザー: ${message}\n\nアドバイザー:`;
 
     let useDirectAPI = false;
     if (useNewPackage && genAI.models && typeof genAI.models.generateContent === 'function') {
