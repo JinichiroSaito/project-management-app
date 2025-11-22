@@ -2851,8 +2851,61 @@ app.post('/api/business-advisor/chat', authenticateToken, requireApproved, async
       historyLength: history.length
     });
     
+    // ユーザーがアップロードした最新のプロジェクトファイルを取得
+    let userDocumentText = null;
+    try {
+      const userProjects = await db.query(
+        `SELECT id, application_file_url, application_file_name, application_file_type, extracted_text, executor_id
+         FROM projects 
+         WHERE executor_id = $1 
+           AND application_file_url IS NOT NULL
+         ORDER BY updated_at DESC, created_at DESC
+         LIMIT 1`,
+        [currentUser.rows[0].id]
+      );
+      
+      if (userProjects.rows.length > 0) {
+        const project = userProjects.rows[0];
+        console.log('[Business Advisor Chat] Found user project with file:', {
+          projectId: project.id,
+          fileName: project.application_file_name,
+          hasExtractedText: !!project.extracted_text
+        });
+        
+        // 既に抽出されたテキストがある場合はそれを使用、なければ抽出
+        if (project.extracted_text) {
+          userDocumentText = project.extracted_text;
+          console.log('[Business Advisor Chat] Using existing extracted text');
+        } else if (project.application_file_url) {
+          // テキストを抽出
+          console.log('[Business Advisor Chat] Extracting text from file...');
+          try {
+            userDocumentText = await extractTextFromFile(
+              project.application_file_url,
+              project.application_file_type
+            );
+            // 抽出したテキストをデータベースに保存
+            await db.query(
+              `UPDATE projects 
+               SET extracted_text = $1, 
+                   extracted_text_updated_at = CURRENT_TIMESTAMP
+               WHERE id = $2`,
+              [userDocumentText, project.id]
+            );
+            console.log('[Business Advisor Chat] Text extracted and saved');
+          } catch (extractError) {
+            console.error('[Business Advisor Chat] Error extracting text:', extractError);
+            // テキスト抽出に失敗してもチャットは続行
+          }
+        }
+      }
+    } catch (docError) {
+      console.error('[Business Advisor Chat] Error fetching user document:', docError);
+      // ドキュメント取得に失敗してもチャットは続行
+    }
+    
     // Gemini APIを呼び出し
-    const response = await businessAdvisorChat(message, history);
+    const response = await businessAdvisorChat(message, history, userDocumentText);
     
     res.json({
       success: true,

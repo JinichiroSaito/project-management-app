@@ -528,12 +528,13 @@ ${extractedText}`;
 }
 
 // ビジネスアドバイザーチャット
-async function businessAdvisorChat(message, conversationHistory = []) {
+async function businessAdvisorChat(message, conversationHistory = [], userDocumentText = null) {
   try {
     initializeGemini();
     
     const modelName = process.env.GEMINI_MODEL_NAME || 'gemini-2.5-flash';
     console.log(`[Business Advisor Chat] Using Gemini model: ${modelName}`);
+    console.log(`[Business Advisor Chat] User document text length: ${userDocumentText ? userDocumentText.length : 0}`);
     
     // システムプロンプト
     const systemPrompt = `新規事業開発担当の皆様、お疲れ様です。Asahi Group Holdingsの事業創出プロセス専門アドバイザーです。
