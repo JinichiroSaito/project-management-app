@@ -590,8 +590,8 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
                           </div>
                         )}
                       </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           )}
