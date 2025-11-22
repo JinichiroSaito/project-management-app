@@ -126,78 +126,80 @@ const ApprovedProjectsDashboard = () => {
         )}
       </div>
 
-      {/* Phase Sections */}
-      <div className="space-y-6">
+      {/* Phase Sections - Horizontal Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {phases.map((phaseData) => (
-          <div key={phaseData.phase} className="bg-white rounded-lg shadow">
+          <div key={phaseData.phase} className="bg-white rounded-lg shadow flex flex-col">
             <div className={`p-4 border-b-2 ${getPhaseColor(phaseData.phase)}`}>
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold">
-                  {getPhaseLabel(phaseData.phase)}
-                </h3>
-                <div className="flex space-x-4 text-sm">
-                  <span>
-                    {t('dashboard.projects', 'Projects')}: {phaseData.summary.project_count}
-                  </span>
-                  <span>
-                    {t('dashboard.requested', 'Requested')}: {formatCurrency(phaseData.summary.total_requested_amount)}
-                  </span>
-                  <span>
-                    {t('dashboard.used', 'Used')}: {formatCurrency(phaseData.summary.total_budget_used)}
-                  </span>
-                  <span>
-                    {t('dashboard.kpiReports', 'KPI Reports')}: {phaseData.summary.total_kpi_reports}
-                  </span>
+              <h3 className="text-lg font-semibold mb-2">
+                {getPhaseLabel(phaseData.phase)}
+              </h3>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-gray-600">{t('dashboard.projects', 'Projects')}:</span>
+                  <span className="font-semibold ml-1">{phaseData.summary.project_count}</span>
+                </div>
+                <div>
+                  <span className="text-gray-600">{t('dashboard.requested', 'Requested')}:</span>
+                  <span className="font-semibold ml-1">{formatCurrency(phaseData.summary.total_requested_amount)}</span>
+                </div>
+                <div>
+                  <span className="text-gray-600">{t('dashboard.used', 'Used')}:</span>
+                  <span className="font-semibold ml-1">{formatCurrency(phaseData.summary.total_budget_used)}</span>
+                </div>
+                <div>
+                  <span className="text-gray-600">{t('dashboard.kpiReports', 'KPI Reports')}:</span>
+                  <span className="font-semibold ml-1">{phaseData.summary.total_kpi_reports}</span>
                 </div>
               </div>
             </div>
 
-            <div className="p-4">
+            <div className="p-4 flex-1 overflow-y-auto" style={{ maxHeight: '600px' }}>
               {phaseData.projects.length === 0 ? (
-                <p className="text-gray-500 text-center py-4">
+                <p className="text-gray-500 text-center py-8">
                   {t('dashboard.noProjects', 'No projects in this phase')}
                 </p>
               ) : (
-                <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-3">
                   {phaseData.projects.map((project) => (
                     <div
                       key={project.id}
-                      className={`border rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                      className={`border rounded-lg p-3 cursor-pointer hover:bg-gray-50 transition-colors ${
                         selectedProject?.id === project.id ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200'
                       }`}
                       onClick={() => handleProjectClick(project)}
                     >
                       <div className="flex justify-between items-start mb-2">
-                        <div className="flex-1">
-                          <h4 className="font-medium text-gray-900">{project.name}</h4>
-                          <p className="text-sm text-gray-600 mt-1">
-                            {t('dashboard.executor', 'Executor')}: {project.executor_name} ({project.executor_email})
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-medium text-gray-900 text-sm truncate">{project.name}</h4>
+                          <p className="text-xs text-gray-600 mt-1 truncate">
+                            {project.executor_name}
                           </p>
                         </div>
                         <select
                           value={project.project_phase || 'mvp_development'}
                           onChange={(e) => handleUpdatePhase(project.id, e.target.value)}
                           onClick={(e) => e.stopPropagation()}
-                          className="text-xs border border-gray-300 rounded px-2 py-1"
+                          className="text-xs border border-gray-300 rounded px-1 py-0.5 ml-2 flex-shrink-0"
                         >
-                          <option value="mvp_development">{t('dashboard.phase.mvpDevelopment', 'MVP Development')}</option>
-                          <option value="business_launch">{t('dashboard.phase.businessLaunch', 'Business Launch')}</option>
-                          <option value="business_stabilization">{t('dashboard.phase.businessStabilization', 'Business Stabilization')}</option>
+                          <option value="mvp_development">{t('dashboard.phase.mvpDevelopment', 'MVP')}</option>
+                          <option value="business_launch">{t('dashboard.phase.businessLaunch', 'Launch')}</option>
+                          <option value="business_stabilization">{t('dashboard.phase.businessStabilization', 'Stabilization')}</option>
                         </select>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-4 mt-3 text-sm">
+                      <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
                         <div>
-                          <p className="text-gray-600">{t('dashboard.requestedAmount', 'Requested Amount')}</p>
-                          <p className="font-semibold text-gray-900">{formatCurrency(project.requested_amount || 0)}</p>
+                          <p className="text-gray-600 text-xs">{t('dashboard.requested', 'Requested')}</p>
+                          <p className="font-semibold text-gray-900 text-xs">{formatCurrency(project.requested_amount || 0)}</p>
                         </div>
                         <div>
-                          <p className="text-gray-600">{t('dashboard.usedAmount', 'Used Amount')}</p>
-                          <p className="font-semibold text-gray-900">{formatCurrency(project.total_budget_used || 0)}</p>
+                          <p className="text-gray-600 text-xs">{t('dashboard.used', 'Used')}</p>
+                          <p className="font-semibold text-gray-900 text-xs">{formatCurrency(project.total_budget_used || 0)}</p>
                         </div>
                         <div>
-                          <p className="text-gray-600">{t('dashboard.kpiReportCount', 'KPI Reports')}</p>
-                          <p className="font-semibold text-gray-900">{project.kpi_report_count || 0}</p>
+                          <p className="text-gray-600 text-xs">{t('dashboard.kpiReports', 'KPI')}</p>
+                          <p className="font-semibold text-gray-900 text-xs">{project.kpi_report_count || 0}</p>
                         </div>
                       </div>
                     </div>
