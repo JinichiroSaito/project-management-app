@@ -2873,18 +2873,17 @@ app.get('/api/projects/approved/dashboard', authenticateToken, requireApproved, 
 
     // ステップ別にグループ化
     const phases = {
-      ideation: [],
       mvp_development: [],
       business_launch: [],
       business_stabilization: []
     };
 
     projectsWithSummaries.forEach(project => {
-      const phase = project.project_phase || 'ideation';
+      const phase = project.project_phase || 'mvp_development';
       if (phases[phase]) {
         phases[phase].push(project);
       } else {
-        phases.ideation.push(project);
+        phases.mvp_development.push(project);
       }
     });
 
@@ -2928,7 +2927,7 @@ app.put('/api/projects/:id/phase', authenticateToken, requireApproved, async (re
     const { id } = req.params;
     const { phase } = req.body;
 
-    const validPhases = ['ideation', 'mvp_development', 'business_launch', 'business_stabilization'];
+    const validPhases = ['mvp_development', 'business_launch', 'business_stabilization'];
     if (!phase || !validPhases.includes(phase)) {
       return res.status(400).json({ 
         error: `Phase must be one of: ${validPhases.join(', ')}` 

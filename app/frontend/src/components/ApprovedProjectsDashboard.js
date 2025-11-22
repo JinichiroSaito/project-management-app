@@ -62,7 +62,6 @@ const ApprovedProjectsDashboard = () => {
 
   const getPhaseLabel = (phase) => {
     const labels = {
-      ideation: t('dashboard.phase.ideation', 'Ideation'),
       mvp_development: t('dashboard.phase.mvpDevelopment', 'MVP Development'),
       business_launch: t('dashboard.phase.businessLaunch', 'Business Launch'),
       business_stabilization: t('dashboard.phase.businessStabilization', 'Business Stabilization')
@@ -72,7 +71,6 @@ const ApprovedProjectsDashboard = () => {
 
   const getPhaseColor = (phase) => {
     const colors = {
-      ideation: 'bg-blue-100 text-blue-800 border-blue-200',
       mvp_development: 'bg-purple-100 text-purple-800 border-purple-200',
       business_launch: 'bg-green-100 text-green-800 border-green-200',
       business_stabilization: 'bg-gray-100 text-gray-800 border-gray-200'
@@ -177,12 +175,11 @@ const ApprovedProjectsDashboard = () => {
                           </p>
                         </div>
                         <select
-                          value={project.project_phase || 'ideation'}
+                          value={project.project_phase || 'mvp_development'}
                           onChange={(e) => handleUpdatePhase(project.id, e.target.value)}
                           onClick={(e) => e.stopPropagation()}
                           className="text-xs border border-gray-300 rounded px-2 py-1"
                         >
-                          <option value="ideation">{t('dashboard.phase.ideation', 'Ideation')}</option>
                           <option value="mvp_development">{t('dashboard.phase.mvpDevelopment', 'MVP Development')}</option>
                           <option value="business_launch">{t('dashboard.phase.businessLaunch', 'Business Launch')}</option>
                           <option value="business_stabilization">{t('dashboard.phase.businessStabilization', 'Business Stabilization')}</option>
