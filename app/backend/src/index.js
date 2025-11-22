@@ -2820,7 +2820,7 @@ app.get('/api/projects/approved/dashboard', authenticateToken, requireApproved, 
     // 承認済みプロジェクトをステップ別に取得
     const projects = await db.query(
       `SELECT p.*, 
-              u1.name as executor_name, u1.email as executor_email,
+              u1.name as executor_name, u1.email as executor_email, u1.company as executor_company,
               COALESCE(
                 json_agg(
                   json_build_object(
@@ -2836,7 +2836,7 @@ app.get('/api/projects/approved/dashboard', authenticateToken, requireApproved, 
        LEFT JOIN project_reviewers pr ON p.id = pr.project_id
        LEFT JOIN users u3 ON pr.reviewer_id = u3.id
        WHERE p.application_status = 'approved'
-       GROUP BY p.id, u1.id, u1.name, u1.email
+       GROUP BY p.id, u1.id, u1.name, u1.email, u1.company
        ORDER BY p.created_at DESC`
     );
 

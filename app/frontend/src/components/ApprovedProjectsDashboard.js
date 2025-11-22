@@ -173,6 +173,10 @@ const ApprovedProjectsDashboard = () => {
                         <div className="flex-1 min-w-0">
                           <h4 className="font-medium text-gray-900 text-sm truncate">{project.name}</h4>
                           <p className="text-xs text-gray-600 mt-1 truncate">
+                            {project.executor_company && (
+                              <span className="font-semibold">{project.executor_company}</span>
+                            )}
+                            {project.executor_company && project.executor_name && ' / '}
                             {project.executor_name}
                           </p>
                         </div>
@@ -220,7 +224,11 @@ const ApprovedProjectsDashboard = () => {
                 <div>
                   <h3 className="text-xl font-bold text-gray-900">{selectedProject.name}</h3>
                   <p className="text-sm text-gray-600 mt-1">
-                    {t('dashboard.executor', 'Executor')}: {selectedProject.executor_name} ({selectedProject.executor_email})
+                    {t('dashboard.executor', 'Executor')}: {selectedProject.executor_company && (
+                      <span className="font-semibold">{selectedProject.executor_company}</span>
+                    )}
+                    {selectedProject.executor_company && ' / '}
+                    {selectedProject.executor_name} ({selectedProject.executor_email})
                   </p>
                 </div>
                 <button
