@@ -8,11 +8,13 @@ import AdminDashboard from './components/AdminDashboard';
 import ProfileForm from './components/ProfileForm';
 import ReviewDashboard from './components/ReviewDashboard';
 import BusinessAdvisorChat from './components/BusinessAdvisorChat';
+import ApprovedProjectsDashboard from './components/ApprovedProjectsDashboard';
 
 function AppContentInner() {
   const { user, userInfo } = useAuth();
   const [showAdmin, setShowAdmin] = useState(false);
   const [showReview, setShowReview] = useState(false);
+  const [showApprovedDashboard, setShowApprovedDashboard] = useState(false);
   const { t } = useLanguage();
 
   if (!user) {
@@ -73,16 +75,21 @@ function AppContentInner() {
 
   const isReviewer = userInfo?.position === 'reviewer';
   const isExecutor = userInfo?.position === 'executor';
+  const isAdmin = userInfo?.is_admin || false;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
-      {(userInfo?.is_admin || isReviewer) && (
+      {(isAdmin || isReviewer || isExecutor) && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex space-x-4">
-            {userInfo?.is_admin && (
+          <div className="flex space-x-4 flex-wrap">
+            {isAdmin && (
               <button
-                onClick={() => setShowAdmin(!showAdmin)}
+                onClick={() => {
+                  setShowAdmin(!showAdmin);
+                  setShowReview(false);
+                  setShowApprovedDashboard(false);
+                }}
                 className={`px-4 py-2 rounded-md text-sm font-medium ${
                   showAdmin
                     ? 'bg-indigo-600 text-white'
@@ -94,7 +101,11 @@ function AppContentInner() {
             )}
             {isReviewer && (
               <button
-                onClick={() => setShowReview(!showReview)}
+                onClick={() => {
+                  setShowReview(!showReview);
+                  setShowAdmin(false);
+                  setShowApprovedDashboard(false);
+                }}
                 className={`px-4 py-2 rounded-md text-sm font-medium ${
                   showReview
                     ? 'bg-indigo-600 text-white'
@@ -104,13 +115,31 @@ function AppContentInner() {
                 {showReview ? t('review.hideDashboard', 'Hide Review Dashboard') : t('review.showDashboard', 'Show Review Dashboard')}
               </button>
             )}
+            {(isAdmin || isReviewer || isExecutor) && (
+              <button
+                onClick={() => {
+                  setShowApprovedDashboard(!showApprovedDashboard);
+                  setShowAdmin(false);
+                  setShowReview(false);
+                }}
+                className={`px-4 py-2 rounded-md text-sm font-medium ${
+                  showApprovedDashboard
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {showApprovedDashboard ? t('dashboard.hide', 'Hide Approved Dashboard') : t('dashboard.show', 'Show Approved Dashboard')}
+              </button>
+            )}
           </div>
         </div>
       )}
-      {showAdmin && userInfo?.is_admin ? (
+      {showAdmin && isAdmin ? (
         <AdminDashboard />
       ) : showReview && isReviewer ? (
         <ReviewDashboard />
+      ) : showApprovedDashboard ? (
+        <ApprovedProjectsDashboard />
       ) : (
         <ProjectList />
       )}

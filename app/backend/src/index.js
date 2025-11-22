@@ -2814,6 +2814,177 @@ app.post('/api/projects/:id/extract-text', authenticateToken, requireApproved, a
   }
 });
 
+// Protected endpoint - Get approved projects dashboard (with KPI and budget summaries)
+app.get('/api/projects/approved/dashboard', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    // 承認済みプロジェクトをステップ別に取得
+    const projects = await db.query(
+      `SELECT p.*, 
+              u1.name as executor_name, u1.email as executor_email,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'id', u3.id,
+                    'name', u3.name,
+                    'email', u3.email
+                  )
+                ) FILTER (WHERE u3.id IS NOT NULL),
+                '[]'::json
+              ) as reviewers
+       FROM projects p
+       LEFT JOIN users u1 ON p.executor_id = u1.id
+       LEFT JOIN project_reviewers pr ON p.id = pr.project_id
+       LEFT JOIN users u3 ON pr.reviewer_id = u3.id
+       WHERE p.application_status = 'approved'
+       GROUP BY p.id, u1.id, u1.name, u1.email
+       ORDER BY p.created_at DESC`
+    );
+
+    // 各プロジェクトのKPI報告数と予算使用額を取得
+    const projectsWithSummaries = await Promise.all(
+      projects.rows.map(async (project) => {
+        // KPI報告数を取得
+        const kpiCount = await db.query(
+          'SELECT COUNT(*) as count FROM kpi_reports WHERE project_id = $1',
+          [project.id]
+        );
+        
+        // 予算使用額の合計を取得（OPEX + CAPEX）
+        const budgetEntries = await db.query(
+          `SELECT 
+             COALESCE(SUM(opex_used), 0) as total_opex_used,
+             COALESCE(SUM(capex_used), 0) as total_capex_used
+           FROM project_budget_entries 
+           WHERE project_id = $1`,
+          [project.id]
+        );
+        
+        const totalUsed = parseFloat(budgetEntries.rows[0]?.total_opex_used || 0) + 
+                         parseFloat(budgetEntries.rows[0]?.total_capex_used || 0);
+        
+        return {
+          ...project,
+          kpi_report_count: parseInt(kpiCount.rows[0]?.count || 0),
+          total_budget_used: totalUsed,
+          requested_amount: parseFloat(project.requested_amount || 0)
+        };
+      })
+    );
+
+    // ステップ別にグループ化
+    const phases = {
+      ideation: [],
+      mvp_development: [],
+      business_launch: [],
+      business_stabilization: []
+    };
+
+    projectsWithSummaries.forEach(project => {
+      const phase = project.project_phase || 'ideation';
+      if (phases[phase]) {
+        phases[phase].push(project);
+      } else {
+        phases.ideation.push(project);
+      }
+    });
+
+    // 各ステップの合計を計算
+    const phaseSummaries = Object.keys(phases).map(phase => {
+      const phaseProjects = phases[phase];
+      const totalRequested = phaseProjects.reduce((sum, p) => sum + (p.requested_amount || 0), 0);
+      const totalUsed = phaseProjects.reduce((sum, p) => sum + (p.total_budget_used || 0), 0);
+      const totalKpiReports = phaseProjects.reduce((sum, p) => sum + (p.kpi_report_count || 0), 0);
+
+      return {
+        phase,
+        projects: phaseProjects,
+        summary: {
+          project_count: phaseProjects.length,
+          total_requested_amount: totalRequested,
+          total_budget_used: totalUsed,
+          total_kpi_reports: totalKpiReports
+        }
+      };
+    });
+
+    res.json({
+      phases: phaseSummaries,
+      overall_summary: {
+        total_projects: projectsWithSummaries.length,
+        total_requested_amount: projectsWithSummaries.reduce((sum, p) => sum + (p.requested_amount || 0), 0),
+        total_budget_used: projectsWithSummaries.reduce((sum, p) => sum + (p.total_budget_used || 0), 0),
+        total_kpi_reports: projectsWithSummaries.reduce((sum, p) => sum + (p.kpi_report_count || 0), 0)
+      }
+    });
+  } catch (error) {
+    console.error('[Approved Projects Dashboard] Error:', error);
+    return handleError(res, error, 'Get Approved Projects Dashboard');
+  }
+});
+
+// Protected endpoint - Update project phase
+app.put('/api/projects/:id/phase', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { phase } = req.body;
+
+    const validPhases = ['ideation', 'mvp_development', 'business_launch', 'business_stabilization'];
+    if (!phase || !validPhases.includes(phase)) {
+      return res.status(400).json({ 
+        error: `Phase must be one of: ${validPhases.join(', ')}` 
+      });
+    }
+
+    // プロジェクトの存在確認
+    const project = await db.query(
+      'SELECT id, application_status FROM projects WHERE id = $1',
+      [id]
+    );
+
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    if (project.rows[0].application_status !== 'approved') {
+      return res.status(403).json({ error: 'Phase can only be updated for approved projects' });
+    }
+
+    // 現在のユーザー情報を取得
+    const currentUser = await db.query(
+      'SELECT id, position, is_admin FROM users WHERE email = $1',
+      [req.user.email]
+    );
+
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = currentUser.rows[0];
+    const projectData = project.rows[0];
+
+    // 実行者、審査者、または管理者のみ更新可能
+    const projectWithExecutor = await db.query(
+      'SELECT executor_id FROM projects WHERE id = $1',
+      [id]
+    );
+    const isExecutor = projectWithExecutor.rows[0]?.executor_id === user.id;
+
+    if (!isExecutor && !user.is_admin && user.position !== 'reviewer') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // フェーズを更新
+    await db.query(
+      'UPDATE projects SET project_phase = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [phase, id]
+    );
+
+    res.json({ success: true, phase });
+  } catch (error) {
+    return handleError(res, error, 'Update Project Phase');
+  }
+});
+
 // Protected endpoint - Business Advisor Chat (executor only)
 app.post('/api/business-advisor/chat', authenticateToken, requireApproved, async (req, res) => {
   try {
