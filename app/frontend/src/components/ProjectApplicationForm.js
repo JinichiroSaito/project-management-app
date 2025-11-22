@@ -563,7 +563,7 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
                                 <li key={index} className="text-sm text-yellow-800">
                                   <div className="mb-1">
                                     <strong>
-                                      {section.section_number}. {section.section_name}
+                                      {section.section_number}. {t(`projectApplication.sectionName.${section.section_name}`, section.section_name)}
                                       {section.is_missing && <span className="ml-2 text-red-600">({t('projectApplication.analysis.missing', 'Missing')})</span>}
                                       {section.is_incomplete && <span className="ml-2 text-orange-600">({t('projectApplication.analysis.incomplete', 'Incomplete')})</span>}
                                     </strong>

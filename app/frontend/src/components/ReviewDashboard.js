@@ -364,7 +364,7 @@ const ReviewDashboard = () => {
                       <ul className="text-xs text-yellow-800 space-y-1">
                         {missingSections.missing_sections.slice(0, 3).map((section, index) => (
                           <li key={index}>
-                            {section.section_number}. {section.section_name}
+                            {section.section_number}. {t(`projectApplication.sectionName.${section.section_name}`, section.section_name)}
                             {section.is_missing && <span className="text-red-600 ml-1">({t('projectApplication.analysis.missing', 'Missing')})</span>}
                             {section.is_incomplete && <span className="text-orange-600 ml-1">({t('projectApplication.analysis.incomplete', 'Incomplete')})</span>}
                           </li>
