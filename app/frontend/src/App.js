@@ -7,6 +7,7 @@ import ProjectList from './components/ProjectList';
 import AdminDashboard from './components/AdminDashboard';
 import ProfileForm from './components/ProfileForm';
 import ReviewDashboard from './components/ReviewDashboard';
+import BusinessAdvisorChat from './components/BusinessAdvisorChat';
 
 function AppContentInner() {
   const { user, userInfo } = useAuth();
@@ -71,6 +72,7 @@ function AppContentInner() {
   }
 
   const isReviewer = userInfo?.position === 'reviewer';
+  const isExecutor = userInfo?.position === 'executor';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -112,6 +114,8 @@ function AppContentInner() {
       ) : (
         <ProjectList />
       )}
+      {/* Business Advisor Chat - 実行者のみ表示 */}
+      {isExecutor && <BusinessAdvisorChat />}
     </div>
   );
 }

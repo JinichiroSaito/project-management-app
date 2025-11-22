@@ -365,6 +365,19 @@ export const translations = {
     'projectApplication.error.extractText': 'Failed to extract text',
     'projectApplication.error.checkSections': 'Failed to check missing sections',
     'projectApplication.error.noAnalysisResult': 'Analysis completed but no results were returned',
+    
+    // Business Advisor Chat
+    'chat.title': 'Business Advisor',
+    'chat.subtitle': 'NBD Process Advisor',
+    'chat.open': 'Open Business Advisor Chat',
+    'chat.welcome': 'Welcome! I am your Business Advisor.',
+    'chat.instruction': 'Ask me about your new business ideas, hypotheses, or MVP plans.',
+    'chat.example1': 'Example: "I have an idea for a personalized non-alcoholic functional beverage service"',
+    'chat.example2': 'Example: "Help me evaluate my MVP plan"',
+    'chat.inputPlaceholder': 'Type your message...',
+    'chat.send': 'Send',
+    'chat.clear': 'Clear',
+    'chat.error.send': 'Failed to send message. Please try again.',
   },
   ja: {
     // Login
@@ -733,6 +746,19 @@ export const translations = {
     'projectApplication.error.extractText': 'テキストの抽出に失敗しました',
     'projectApplication.error.checkSections': '不足セクションのチェックに失敗しました',
     'projectApplication.error.noAnalysisResult': '分析は完了しましたが、結果が返されませんでした',
+    
+    // Business Advisor Chat
+    'chat.title': 'ビジネスアドバイザー',
+    'chat.subtitle': 'NBDプロセスアドバイザー',
+    'chat.open': 'ビジネスアドバイザーチャットを開く',
+    'chat.welcome': 'ようこそ！私はあなたのビジネスアドバイザーです。',
+    'chat.instruction': '新規事業のアイデア、仮説、またはMVP計画について質問してください。',
+    'chat.example1': '例：「ノンアル・機能性飲料のパーソナライズ提案サービスのアイデアがあります」',
+    'chat.example2': '例：「MVP計画の評価を手伝ってください」',
+    'chat.inputPlaceholder': 'メッセージを入力...',
+    'chat.send': '送信',
+    'chat.clear': 'クリア',
+    'chat.error.send': 'メッセージの送信に失敗しました。もう一度お試しください。',
     
     // Projects
     'projects.myProjects': 'マイプロジェクト',

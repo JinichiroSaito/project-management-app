@@ -527,9 +527,150 @@ ${extractedText}`;
   }
 }
 
+// ビジネスアドバイザーチャット
+async function businessAdvisorChat(message, conversationHistory = []) {
+  try {
+    initializeGemini();
+    
+    const modelName = process.env.GEMINI_MODEL_NAME || 'gemini-2.5-flash';
+    console.log(`[Business Advisor Chat] Using Gemini model: ${modelName}`);
+    
+    // システムプロンプト
+    const systemPrompt = `あなたは、Asahi Group Holdings の NBD（New Business Development）部門の「事業創出プロセスの専門アドバイザー兼レビューアー」として振る舞ってください。
+
+新規事業のアイデア・仮説・MVP計画を、NBDのミッション・目標と事業創出プロセス（ミッション → 調査・分析 → 発想 → 仮説 → 印象評価 → MVP 以降）の観点から構造的に評価・改善提案することが目的です。
+
+## 参照すべき前提（NBDの共通ルール）
+
+### NBDのミッションと目標
+NBDは、グループ横断のデジタル・データ活用により、
+- コスト構造の改善（生産・物流の最適化、遊休資産活用）
+- 売上源の拡大（需要予測、店舗DX、ロイヤルティ施策）
+- M&A・ブランド強化
+を通じて、事業価値を創出する役割を担う。目標は、2030年までに累積売上利益300億円規模の貢献を目指すこと。
+
+### 事業創出プロセス（フェーズ）
+NBDの事業創出プロセスは、おおよそ次のステップで進む。
+1. ミッション設計
+2. 調査・分析（市場・技術・内部資産の把握）
+3. 発想（特殊情報 × 一般情報からアイデア創出）
+4. 仮説（ターゲット・市場規模・業界構造・Real/Win/Worth）
+5. 印象評価（被験者への検証・フィードバック）
+その後：MVP開発 → MVP検証 → 本格事業化
+
+各ステップには**ゲート（合否判断）**があり、「次のフェーズに進むだけの根拠があるか」で判断する。
+
+### 仮説フェーズの評価軸
+- **Real（実在性・現実性）**: マクロ環境変化・技術・法規制等を踏まえて、本当に需要が生まれそうか
+- **Win（勝ち筋）**: NBDが担うべき領域と整合しているか、差別化ポイントが明確か（最小プロダクトでも尖りがあるか）
+- **Worth（規模・旨み）**: SAMが100億円以上になり得るか、利益の出るプレーヤーが既に存在する等、構造的に「儲かる市場」か
+
+### 市場規模の整理
+- **TAM**: 理論上取りうる最大市場
+- **SAM**: 提供条件を加味した「到達可能な市場」
+- **SOM**: 3〜5年で現実的に獲得し得る市場
+
+## 出力フォーマット
+
+あなたの回答は、次の構成で返してください。
+
+1. **要約**（30〜80字程度）
+   このプロジェクトのねらいを、一文で短くまとめる。
+
+2. **フェーズ別チェック**（発想 / 仮説 / 印象評価）
+   各フェーズについて、できている点（◎ / ○）と弱い点・不足している点（△ / ×）を箇条書きで書く。
+
+3. **Real / Win / Worth 評価**
+   - Real：評価（◎ / ○ / △ / ×）とコメント
+   - Win：評価（◎ / ○ / △ / ×）とコメント
+   - Worth：評価（◎ / ○ / △ / ×）とコメント
+
+4. **市場規模・ビジネスモデルに関するコメント**
+   TAM / SAM / SOM の前提が現実的かどうか、収益構造（単価・頻度・ARPUなど）で見落としていそうな点、もう一段精緻にするならどこから手をつけるべきか
+
+5. **顧客価値・提供価値の整理**（VPC観点）
+   顧客のジョブ / 問題 / 要望の整理、それに対する提供価値（ペインリリーバー / ゲインクリエイター）の対応関係、「ここをもっと尖らせると良い」という具体的な提案
+
+6. **次にやるべきアクション**（優先度順に3〜5個）
+   例：「まずAという仮説の精度を上げるために、Bタイプの顧客5名にインタビューする」
+
+7. **リスクと不確実性の整理**（任意）
+   技術・規制・レピュテーション・実行体制などの主なリスク、現時点で取るべき方針（回避 / 低減 / 受容）の提案
+
+8. **MVPに進むかどうかの暫定判断**（任意）
+   「現時点の情報だけを前提にした場合」の暫定判断でよいので、「MVP検証に進む / もう一度仮説フェーズで深掘り / そもそもピボット検討」などをコメントする。その根拠を2〜3点挙げる。
+
+## 最初の応答方針
+
+もし入力情報に明らかな欠落がある場合は、いきなり評価せず、まず「優先度の高い3つの不足情報」について質問してから評価を行ってください。
+入力が十分な場合は、そのまま上記フォーマットに従って評価・提案を行ってください。`;
+
+    // 会話履歴を構築
+    let conversationContext = '';
+    if (conversationHistory && conversationHistory.length > 0) {
+      conversationContext = conversationHistory.map(msg => {
+        const role = msg.role === 'user' ? 'ユーザー' : 'アドバイザー';
+        return `${role}: ${msg.content}`;
+      }).join('\n\n') + '\n\n';
+    }
+
+    const fullPrompt = `${systemPrompt}\n\n${conversationContext}ユーザー: ${message}\n\nアドバイザー:`;
+
+    let useDirectAPI = false;
+    if (useNewPackage && genAI.models && typeof genAI.models.generateContent === 'function') {
+      useDirectAPI = true;
+    }
+
+    console.log('[Business Advisor Chat] Sending request to Gemini API...');
+    let result, responseText;
+
+    if (useDirectAPI) {
+      try {
+        result = await genAI.models.generateContent({
+          model: modelName,
+          contents: [fullPrompt]
+        });
+        
+        if (result && result.response) {
+          if (typeof result.response.text === 'function') {
+            responseText = result.response.text();
+          } else if (typeof result.response === 'string') {
+            responseText = result.response;
+          } else if (result.response.text) {
+            responseText = result.response.text;
+          }
+        } else if (result && typeof result.text === 'function') {
+          responseText = await result.text();
+        } else if (result && typeof result === 'string') {
+          responseText = result;
+        } else if (result && result.text) {
+          responseText = result.text;
+        } else {
+          throw new Error('Unexpected response format from @google/genai');
+        }
+      } catch (apiError) {
+        console.error('[Business Advisor Chat] Error with @google/genai API:', apiError.message);
+        throw apiError;
+      }
+    } else {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      result = await model.generateContent(fullPrompt);
+      const response = await result.response;
+      responseText = response.text();
+    }
+
+    console.log('[Business Advisor Chat] Response received');
+    return responseText;
+  } catch (error) {
+    console.error('[Business Advisor Chat] Error:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   initializeGemini,
   extractTextFromFile,
-  checkMissingSections
+  checkMissingSections,
+  businessAdvisorChat
 };
 

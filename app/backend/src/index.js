@@ -10,7 +10,7 @@ const { authenticateToken, optionalAuth, requireAdmin, requireApproved, initiali
 const { sendApprovalRequestEmail, sendApprovalNotificationEmail, sendRegistrationConfirmationEmail } = require('./utils/email');
 const upload = require('./middleware/upload');
 const { uploadFile, deleteFile } = require('./utils/storage');
-const { extractTextFromFile, checkMissingSections } = require('./utils/gemini');
+const { extractTextFromFile, checkMissingSections, businessAdvisorChat } = require('./utils/gemini');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -2811,6 +2811,56 @@ app.post('/api/projects/:id/extract-text', authenticateToken, requireApproved, a
     });
   } catch (error) {
     return handleError(res, error, 'Extract Text');
+  }
+});
+
+// Protected endpoint - Business Advisor Chat (executor only)
+app.post('/api/business-advisor/chat', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { message, conversationHistory } = req.body;
+    
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+    
+    // 現在のユーザー情報を取得
+    const currentUser = await db.query(
+      'SELECT id, position FROM users WHERE email = $1',
+      [req.user.email]
+    );
+    
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // 実行者のみが利用可能
+    if (currentUser.rows[0].position !== 'executor') {
+      return res.status(403).json({ error: 'Only executors can use the business advisor chat' });
+    }
+    
+    // 会話履歴の検証
+    let history = Array.isArray(conversationHistory) ? conversationHistory : [];
+    if (history.length > 20) {
+      // 会話履歴が長すぎる場合は最新20件のみ使用
+      history = history.slice(-20);
+    }
+    
+    console.log('[Business Advisor Chat] Request received', {
+      userId: currentUser.rows[0].id,
+      messageLength: message.length,
+      historyLength: history.length
+    });
+    
+    // Gemini APIを呼び出し
+    const response = await businessAdvisorChat(message, history);
+    
+    res.json({
+      success: true,
+      response: response
+    });
+  } catch (error) {
+    console.error('[Business Advisor Chat] Error:', error);
+    return handleError(res, error, 'Business Advisor Chat');
   }
 });
 
