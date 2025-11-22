@@ -86,30 +86,35 @@ const uploadLimiter = rateLimit({
 // 全エンドポイントにレート制限を適用
 app.use('/api/', limiter);
 
-// CORS設定（本番環境では特定オリジンのみ許可）
+// CORS設定（FRONTEND_URLが設定されている場合は特定オリジンのみ許可）
 app.use((req, res, next) => {
-  const isProduction = process.env.NODE_ENV === 'production';
-  const allowedOrigins = isProduction 
-    ? (process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : [])
-    : ['*']; // 開発環境では全許可
-  
   const origin = req.headers.origin;
   
-  if (isProduction) {
-    // 本番環境: 許可されたオリジンのみ
-    if (allowedOrigins.length > 0 && origin && allowedOrigins.includes(origin)) {
+  // FRONTEND_URLが設定されている場合は、そのオリジンのみ許可
+  if (process.env.FRONTEND_URL) {
+    const allowedOrigins = process.env.FRONTEND_URL.split(',').map(url => url.trim());
+    
+    if (origin && allowedOrigins.includes(origin)) {
+      // 許可されたオリジンからのリクエスト
       res.header('Access-Control-Allow-Origin', origin);
-    } else if (allowedOrigins.length === 0) {
-      // FRONTEND_URLが設定されていない場合は警告
-      console.warn('[CORS] FRONTEND_URL not set in production environment');
-      res.header('Access-Control-Allow-Origin', origin || '*');
-    } else {
+    } else if (origin) {
       // 許可されていないオリジンからのリクエスト
-      console.warn(`[CORS] Blocked request from origin: ${origin}`);
+      console.warn(`[CORS] Blocked request from origin: ${origin}. Allowed origins: ${allowedOrigins.join(', ')}`);
       return res.status(403).json({ error: 'Origin not allowed' });
+    } else {
+      // オリジンが指定されていない場合（例: Postman、curl）
+      // 開発環境では許可、本番環境では警告
+      if (process.env.NODE_ENV === 'production') {
+        console.warn('[CORS] Request without origin header in production environment');
+      }
+      res.header('Access-Control-Allow-Origin', allowedOrigins[0] || '*');
     }
   } else {
-    // 開発環境: 全許可
+    // FRONTEND_URLが設定されていない場合
+    // 開発環境では全許可、本番環境では警告
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('[CORS] FRONTEND_URL not set in production environment - allowing all origins');
+    }
     res.header('Access-Control-Allow-Origin', '*');
   }
   

@@ -121,7 +121,7 @@ jobs:
               --allow-unauthenticated \
               --vpc-connector=vpc-connector \
               --service-account=cloud-run-dev@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
-              --set-env-vars="DB_HOST=10.81.0.3,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user,NODE_ENV=development,EMAIL_SERVICE=gmail,ADMIN_EMAIL=jinichirou.saitou@asahi-gh.com,APP_URL=https://frontend-dev-823277232006.asia-northeast1.run.app,GCS_BUCKET_NAME=pm-app-uploads-dev" \
+              --set-env-vars="DB_HOST=10.81.0.3,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user,NODE_ENV=development,EMAIL_SERVICE=gmail,ADMIN_EMAIL=jinichirou.saitou@asahi-gh.com,APP_URL=https://frontend-dev-823277232006.asia-northeast1.run.app,FRONTEND_URL=https://frontend-dev-823277232006.asia-northeast1.run.app,GCS_BUCKET_NAME=pm-app-uploads-dev" \
               --set-secrets="DB_PASSWORD=db-password-dev:latest,FIREBASE_SERVICE_ACCOUNT=firebase-service-account-dev:latest,EMAIL_USER=email-user-dev:latest,EMAIL_APP_PASSWORD=email-app-password-dev:latest,GEMINI_API_KEY=gemini-api-key-dev:latest" \
               --project=${{ env.PROJECT_ID }} \
               --quiet; then
