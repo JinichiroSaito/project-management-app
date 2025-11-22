@@ -4,6 +4,8 @@ if (process.env.NODE_ENV !== 'production' && !process.env.GCP_PROJECT) {
 }
 
 const express = require('express');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const db = require('./db');
 const admin = require('firebase-admin');
 const { authenticateToken, optionalAuth, requireAdmin, requireApproved, initializeFirebase } = require('./middleware/auth');
@@ -17,6 +19,24 @@ const PORT = process.env.PORT || 8080;
 
 // Firebase初期化
 initializeFirebase();
+
+// セキュリティヘッダーの設定
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Cloud Storageの署名付きURLとの互換性のため
+}));
 
 // 起動時にマイグレーションを実行（開発環境のみ、または環境変数で制御）
 if (process.env.RUN_MIGRATIONS === 'true') {
@@ -36,11 +56,66 @@ app.use((req, res, next) => {
   next();
 });
 
-// CORS設定
+// レート制限の設定
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15分
+  max: 100, // 15分間に100リクエストまで
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true, // `RateLimit-*` ヘッダーを返す
+  legacyHeaders: false, // `X-RateLimit-*` ヘッダーを無効化
+});
+
+// 厳しいレート制限（認証エンドポイント用）
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15分
+  max: 5, // 15分間に5リクエストまで
+  message: 'Too many authentication attempts, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ファイルアップロード用のレート制限
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1時間
+  max: 10, // 1時間に10ファイルまで
+  message: 'Too many file uploads, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 全エンドポイントにレート制限を適用
+app.use('/api/', limiter);
+
+// CORS設定（本番環境では特定オリジンのみ許可）
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const isProduction = process.env.NODE_ENV === 'production';
+  const allowedOrigins = isProduction 
+    ? (process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : [])
+    : ['*']; // 開発環境では全許可
+  
+  const origin = req.headers.origin;
+  
+  if (isProduction) {
+    // 本番環境: 許可されたオリジンのみ
+    if (allowedOrigins.length > 0 && origin && allowedOrigins.includes(origin)) {
+      res.header('Access-Control-Allow-Origin', origin);
+    } else if (allowedOrigins.length === 0) {
+      // FRONTEND_URLが設定されていない場合は警告
+      console.warn('[CORS] FRONTEND_URL not set in production environment');
+      res.header('Access-Control-Allow-Origin', origin || '*');
+    } else {
+      // 許可されていないオリジンからのリクエスト
+      console.warn(`[CORS] Blocked request from origin: ${origin}`);
+      return res.status(403).json({ error: 'Origin not allowed' });
+    }
+  } else {
+    // 開発環境: 全許可
+    res.header('Access-Control-Allow-Origin', '*');
+  }
+  
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
   
   // Preflight request
   if (req.method === 'OPTIONS') {
@@ -526,7 +601,7 @@ app.get('/api/projects/:id', optionalAuth, async (req, res) => {
 });
 
 // Protected endpoint - Create new project (application)
-app.post('/api/projects', authenticateToken, requireApproved, upload.single('applicationFile'), async (req, res) => {
+app.post('/api/projects', uploadLimiter, authenticateToken, requireApproved, upload.single('applicationFile'), async (req, res) => {
   try {
     const { 
       name, 
@@ -846,7 +921,7 @@ app.post('/api/projects', authenticateToken, requireApproved, upload.single('app
 });
 
 // Protected endpoint - Update project (application)
-app.put('/api/projects/:id', authenticateToken, upload.single('applicationFile'), async (req, res) => {
+app.put('/api/projects/:id', uploadLimiter, authenticateToken, upload.single('applicationFile'), async (req, res) => {
   try {
     const { id } = req.params;
     const { 
@@ -1217,7 +1292,7 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
 });
 
 // User registration endpoint (called after Firebase signup)
-app.post('/api/users/register', authenticateToken, async (req, res) => {
+app.post('/api/users/register', authLimiter, authenticateToken, async (req, res) => {
   try {
     const { email, uid } = req.user;
     console.log(`[Register] Registration request for:`, { email, uid });
