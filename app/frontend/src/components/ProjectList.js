@@ -342,29 +342,6 @@ const ProjectList = () => {
                   </div>
                 )}
                 <div className="flex space-x-2">
-                  {project.application_file_url && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const response = await api.post(`/api/projects/${project.id}/extract-text`);
-                          alert(t('projectApplication.textExtracted', 'Text extracted successfully. Please check the project details.'));
-                          // プロジェクト一覧を更新
-                          if (isExecutor) {
-                            fetchMyProjects();
-                          } else {
-                            fetchProjects();
-                          }
-                        } catch (error) {
-                          console.error('Error extracting text:', error);
-                          alert(error.response?.data?.error || t('projectApplication.error.extractText', 'Failed to extract text'));
-                        }
-                      }}
-                      className="px-3 py-1 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700"
-                    >
-                      {t('projectApplication.analysis.extract', 'Extract Text with Gemini')}
-                    </button>
-                  )}
                   {(project.application_file_url || project.missing_sections) && (
                     <button
                       type="button"

@@ -20,9 +20,7 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
   const [editingKpiReport, setEditingKpiReport] = useState(null);
   const [showKpiForm, setShowKpiForm] = useState(false);
   const [kpiReportType, setKpiReportType] = useState(null);
-  const [extractedText, setExtractedText] = useState(null);
   const [missingSections, setMissingSections] = useState(null);
-  const [extractingText, setExtractingText] = useState(false);
   const [checkingSections, setCheckingSections] = useState(false);
   const { t } = useLanguage();
 
@@ -30,7 +28,6 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
     fetchReviewers();
     if (project?.id) {
       fetchKpiReports();
-      fetchExtractedText();
       fetchMissingSections();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -303,18 +300,6 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const fetchExtractedText = async () => {
-    if (!project?.id) return;
-    try {
-      const response = await api.get(`/api/projects/${project.id}/extracted-text`);
-      setExtractedText(response.data.extracted_text);
-    } catch (error) {
-      if (error.response?.status !== 404) {
-        console.error('Error fetching extracted text:', error);
-      }
-    }
-  };
-
   const fetchMissingSections = async () => {
     if (!project?.id) return;
     try {
@@ -324,22 +309,6 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
       if (error.response?.status !== 404) {
         console.error('Error fetching missing sections:', error);
       }
-    }
-  };
-
-  const handleExtractText = async () => {
-    if (!project?.id) return;
-    try {
-      setExtractingText(true);
-      setError('');
-      const response = await api.post(`/api/projects/${project.id}/extract-text`);
-      setExtractedText(response.data.extracted_text);
-      alert(t('projectApplication.textExtracted', 'Text extracted successfully'));
-    } catch (error) {
-      console.error('Error extracting text:', error);
-      setError(error.response?.data?.error || t('projectApplication.error.extractText', 'Failed to extract text'));
-    } finally {
-      setExtractingText(false);
     }
   };
 
@@ -459,7 +428,7 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
             </div>
           </div>
 
-          {/* テキスト抽出と不足部分チェック */}
+          {/* 不足部分チェック（自動的にテキスト抽出と評価が実行されるため、結果のみ表示） */}
           {project?.id && project?.application_file_url && (
             <div className="mb-6 border-b border-gray-200 pb-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
@@ -467,65 +436,25 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
               </h3>
               
               <div className="space-y-4">
-                {/* テキスト抽出 */}
+                {/* 不足部分チェック結果 */}
                 <div className="bg-gray-50 rounded-lg p-4">
                   <div className="flex justify-between items-center mb-2">
                     <h4 className="font-medium text-gray-900">
-                      {t('projectApplication.analysis.extractText', 'Extract Text from Document')}
+                      {t('projectApplication.analysis.checkMissing', 'Check Missing Sections')}
                     </h4>
                     <button
                       type="button"
-                      onClick={handleExtractText}
-                      disabled={extractingText}
+                      onClick={handleCheckMissingSections}
+                      disabled={checkingSections}
                       className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium"
                     >
-                      {extractingText ? t('projectApplication.analysis.extracting', 'Extracting...') : t('projectApplication.analysis.extract', 'Extract Text')}
+                      {checkingSections ? t('projectApplication.analysis.checking', 'Checking...') : t('projectApplication.analysis.check', 'Check Missing Sections')}
                     </button>
                   </div>
                   <p className="text-sm text-gray-600 mb-2">
-                    {t('projectApplication.analysis.extractDescription', 'Extract text content from the uploaded PPT/PDF file using AI')}
+                    {t('projectApplication.analysis.checkDescription', 'Analyze the extracted text and identify missing sections required for the project application')}
                   </p>
-                  {extractedText && (
-                    <div className="mt-3 p-3 bg-white rounded border border-gray-200">
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap max-h-60 overflow-y-auto">
-                        {extractedText.substring(0, 500)}
-                        {extractedText.length > 500 && '...'}
-                      </p>
-                      {extractedText.length > 500 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const fullText = window.prompt(t('projectApplication.analysis.fullText', 'Full extracted text:'), extractedText);
-                          }}
-                          className="mt-2 text-indigo-600 hover:text-indigo-700 text-sm font-medium"
-                        >
-                          {t('projectApplication.analysis.viewFull', 'View full text')}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* 不足部分チェック */}
-                {extractedText && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="font-medium text-gray-900">
-                        {t('projectApplication.analysis.checkMissing', 'Check Missing Sections')}
-                      </h4>
-                      <button
-                        type="button"
-                        onClick={handleCheckMissingSections}
-                        disabled={checkingSections}
-                        className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium"
-                      >
-                        {checkingSections ? t('projectApplication.analysis.checking', 'Checking...') : t('projectApplication.analysis.check', 'Check Missing Sections')}
-                      </button>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-2">
-                      {t('projectApplication.analysis.checkDescription', 'Analyze the extracted text and identify missing sections required for the project application')}
-                    </p>
-                    {missingSections && (
+                  {missingSections && (
                       <div className="mt-3 space-y-3">
                         {missingSections.completeness_score !== undefined && (
                           <div className="p-3 bg-white rounded border border-gray-200">
@@ -661,7 +590,6 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
                           </div>
                         )}
                       </div>
-                    )}
                   </div>
                 )}
               </div>
