@@ -1,0 +1,18 @@
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+
+// TODO: Firebase Consoleから取得した設定情報を入力してください
+// Firebase Console > プロジェクトの設定 > マイアプリ > Webアプリの設定
+// プロジェクトID: project-management-app-c1f78
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY_HERE", // Firebase Consoleから取得
+  authDomain: "project-management-app-c1f78.firebaseapp.com",
+  projectId: "project-management-app-c1f78",
+  storageBucket: "project-management-app-c1f78.appspot.com",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID", // Firebase Consoleから取得
+  appId: "YOUR_APP_ID" // Firebase Consoleから取得
+};
+
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+
