@@ -481,18 +481,39 @@ ${extractedText}`;
         const GoogleGenerativeAI = generativeAiModule.GoogleGenerativeAI;
         const apiKey = process.env.GEMINI_API_KEY;
         genAI = new GoogleGenerativeAI(apiKey);
+        // モデルが利用できない場合は、デフォルトモデルにフォールバック
         const fallbackModel = 'gemini-2.5-flash';
-        const model = genAI.getGenerativeModel({ model: fallbackModel });
-        result = await model.generateContent(prompt);
-        const response = await result.response;
-        responseText = response.text();
+        console.log(`[Check Missing Sections] Attempting fallback to model: ${fallbackModel}`);
+        try {
+          const model = genAI.getGenerativeModel({ model: fallbackModel });
+          result = await model.generateContent(prompt);
+          const response = await result.response;
+          responseText = response.text();
+        } catch (fallbackError) {
+          console.error('[Check Missing Sections] Fallback model also failed:', fallbackError.message);
+          throw new Error(`Gemini API error: ${apiError.message}. Fallback also failed: ${fallbackError.message}`);
+        }
       }
     } else {
       // 既存のパッケージの使用方法
-      const model = genAI.getGenerativeModel({ model: modelName });
-      result = await model.generateContent(prompt);
-      const response = await result.response;
-      responseText = response.text();
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        result = await model.generateContent(prompt);
+        const response = await result.response;
+        responseText = response.text();
+      } catch (modelError) {
+        // モデルが利用できない場合（例: gemini-3.0-flashが利用不可）、デフォルトモデルにフォールバック
+        if (modelError.message && (modelError.message.includes('not found') || modelError.message.includes('not available'))) {
+          console.warn(`[Check Missing Sections] Model ${modelName} not available, falling back to gemini-2.5-flash`);
+          const fallbackModel = 'gemini-2.5-flash';
+          const model = genAI.getGenerativeModel({ model: fallbackModel });
+          result = await model.generateContent(prompt);
+          const response = await result.response;
+          responseText = response.text();
+        } else {
+          throw modelError;
+        }
+      }
     }
     
     console.log(`[Check Missing Sections] Received response (${responseText.length} characters)`);
@@ -675,10 +696,24 @@ NBDの事業創出プロセスは、おおよそ次のステップで進む。
         throw apiError;
       }
     } else {
-      const model = genAI.getGenerativeModel({ model: modelName });
-      result = await model.generateContent(fullPrompt);
-      const response = await result.response;
-      responseText = response.text();
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        result = await model.generateContent(fullPrompt);
+        const response = await result.response;
+        responseText = response.text();
+      } catch (modelError) {
+        // モデルが利用できない場合（例: gemini-3.0-flashが利用不可）、デフォルトモデルにフォールバック
+        if (modelError.message && (modelError.message.includes('not found') || modelError.message.includes('not available'))) {
+          console.warn(`[Business Advisor Chat] Model ${modelName} not available, falling back to gemini-2.5-flash`);
+          const fallbackModel = 'gemini-2.5-flash';
+          const model = genAI.getGenerativeModel({ model: fallbackModel });
+          result = await model.generateContent(fullPrompt);
+          const response = await result.response;
+          responseText = response.text();
+        } else {
+          throw modelError;
+        }
+      }
     }
 
     console.log('[Business Advisor Chat] Response received');
