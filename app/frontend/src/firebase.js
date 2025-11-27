@@ -1,16 +1,15 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 
-// TODO: Firebase Consoleから取得した設定情報を入力してください
-// Firebase Console > プロジェクトの設定 > マイアプリ > Webアプリの設定
-// プロジェクトID: project-management-app-c1f78
+// Firebase configuration for project-management-app-c1f78
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY_HERE", // Firebase Consoleから取得してください
+  apiKey: "AIzaSyCkIXVpptpoFWS0kgK-Nt0aIcURjMV6_Uw",
   authDomain: "project-management-app-c1f78.firebaseapp.com",
   projectId: "project-management-app-c1f78",
-  storageBucket: "project-management-app-c1f78.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID", // Firebase Consoleから取得してください
-  appId: "YOUR_APP_ID" // Firebase Consoleから取得してください
+  storageBucket: "project-management-app-c1f78.firebasestorage.app",
+  messagingSenderId: "924039910808",
+  appId: "1:924039910808:web:b8befa1e5113441541c7ed",
+  measurementId: "G-XWXBLY9LXT"
 };
 
 const app = initializeApp(firebaseConfig);
