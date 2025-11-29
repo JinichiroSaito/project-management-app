@@ -317,7 +317,10 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
     try {
       setCheckingSections(true);
       setError('');
-      const response = await api.post(`/api/projects/${project.id}/check-missing-sections`);
+      // 現在の言語設定をリクエストに含める
+      const response = await api.post(`/api/projects/${project.id}/check-missing-sections`, {
+        language: language || 'ja'
+      });
       if (response.data.analysis) {
         setMissingSections(response.data.analysis);
         alert(t('projectApplication.sectionsChecked', 'Missing sections checked successfully'));

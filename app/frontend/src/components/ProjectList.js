@@ -15,7 +15,7 @@ const ProjectList = () => {
   const [selectedProjectForKpi, setSelectedProjectForKpi] = useState(null);
   const [selectedProjectForBudget, setSelectedProjectForBudget] = useState(null);
   const { user, userInfo } = useAuth();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   
   const isExecutor = userInfo?.position === 'executor';
   const isAdmin = userInfo?.is_admin || false;
@@ -347,7 +347,11 @@ const ProjectList = () => {
                       type="button"
                       onClick={async () => {
                         try {
-                          const response = await api.post(`/api/projects/${project.id}/check-missing-sections`);
+                          // 現在の言語設定をリクエストに含める
+                          const { language } = useLanguage();
+                          const response = await api.post(`/api/projects/${project.id}/check-missing-sections`, {
+                            language: language || 'ja'
+                          });
                           alert(t('projectApplication.sectionsChecked', 'Missing sections checked successfully. Please check the project details.'));
                           // プロジェクト一覧を更新
                           if (isExecutor) {

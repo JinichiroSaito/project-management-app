@@ -252,7 +252,7 @@ async function extractTextFromFile(fileUrl, fileType) {
 }
 
 // 構想書の不足部分をチェック
-async function checkMissingSections(extractedText) {
+async function checkMissingSections(extractedText, language = 'ja') {
   try {
     initializeGemini();
     
@@ -260,7 +260,7 @@ async function checkMissingSections(extractedText) {
     // デフォルト: gemini-2.5-flash（安定版）
     // Gemini 3.0モデル（gemini-3.0-pro, gemini-3.0-flashなど）は@google/generative-aiでも利用可能な場合があります
     const modelName = process.env.GEMINI_MODEL_NAME || 'gemini-2.5-flash';
-    console.log(`[Check Missing Sections] Using Gemini model: ${modelName} (package: ${useNewPackage ? '@google/genai' : '@google/generative-ai'})`);
+    console.log(`[Check Missing Sections] Using Gemini model: ${modelName} (package: ${useNewPackage ? '@google/genai' : '@google/generative-ai'}), language: ${language}`);
     
     // 新しいパッケージの場合は直接genAI.models.generateContentを使用
     let useDirectAPI = false;
@@ -269,7 +269,172 @@ async function checkMissingSections(extractedText) {
       console.log('[Check Missing Sections] Using direct API: genAI.models.generateContent');
     }
     
-    const prompt = `以下の新規事業構想書（MVP予算承認申請書）のテキストを分析し、審査基準（MVP予算承認までのチェック項目）に基づいて評価してください。
+    // 言語に応じてプロンプトを切り替え
+    const isEnglish = language === 'en';
+    const prompt = isEnglish ? `Please analyze the following new business proposal (MVP budget approval application) text and evaluate it based on the review criteria (check items for MVP budget approval).
+
+## Review Criteria (Check Items for MVP Budget Approval)
+
+### Common Rules
+
+Each item can only proceed to the next step if all "Knock-Out Conditions" are met.
+
+### 1. What is the problem to be solved?
+
+Clearly state what problem occurs in what situation and why it is meaningful to solve it, taking into account the business situation and the reason for NBD's existence.
+
+**Knock-Out Conditions**:
+- It is clearly stated that it is a problem-solving area that NBD should address.
+
+### 2. Who is the target customer?
+
+Show the attributes and habits of the target customers involved in the problem, and what problems they have. Present customer feedback and problems identified in the previous PoC step.
+
+**Knock-Out Conditions**:
+- At least one segment or target is defined.
+- Not only attributes but also "situation, behavior, and motivation" are defined.
+- Impression evaluation has been confirmed with at least 5 actual subjects.
+
+### 3. What is the value proposition?
+
+**Overview**: Clearly state what value is provided to the target customers. Show how and which customer problems are solved by that value.
+
+**Knock-Out Conditions**:
+- The value hypothesis is clearly stated in the following format: "Enable Y in situation X, reduce Z"
+- Comparison criteria (current state, alternatives) are clearly stated.
+
+### 4. What is the prototype?
+
+**Overview**: Prepare a prototype (or pre-prototype) that customers can "touch" and demonstrate how value is provided.
+
+**Knock-Out Conditions**:
+- At least a simple mockup or visual image exists.
+- The usage image can be specifically imagined from that prototype.
+
+### 5. What is the assumed business model?
+
+**Overview**: Clearly state how revenue or benefits are obtained by providing value.
+
+**Knock-Out Conditions**:
+- At least one method of sales, revenue, or benefit is identified (e.g., subscription, commission model, contribution profit from cost reduction, etc.)
+- A rough calculation formula for revenue is clearly stated (e.g., ARPU, benefit per case, etc.)
+- The payer is identified (e.g., users, companies, internal departments, etc.)
+
+### 6. What is the market size?
+
+**Overview**: Show the situation, size, and growth of the market you plan to enter, and clearly state how much sales scale you expect in the future.
+
+**Knock-Out Conditions**:
+- SAM (Serviceable Available Market) is a market size of 10 billion yen or more.
+- The calculation basis for SAM (number of targets, usage frequency, unit price or benefit) is clearly stated.
+
+### 7. Where are the competitors?
+
+**Overview**: Show the expected competitors and their characteristics, and clearly state what differentiation approach (positioning) will be taken.
+
+**Knock-Out Conditions**:
+- At least one example of direct, indirect, or alternative competitors is listed.
+- The differentiation hypothesis with representative competitors is visualized on 2 axes (e.g., price × experience value, etc.)
+
+### 8. What are the MVP verification methods and target numbers?
+
+**Overview**: Clearly state the MVP verification methods and the indicators and target numbers you want to verify.
+
+**Knock-Out Conditions**:
+- The verification method is clearly stated.
+- At least one target number is set for each of the following 3 types of indicators:
+  - **Behavioral indicators** (e.g., main task completion rate 40% or more, revisit rate within 48 hours 25% or more)
+  - **Quality indicators** (e.g., complaint rate ≤ X%, fatal defects 0, privacy incidents 0)
+  - **Subjective indicators** (e.g., NPS, PMF survey, CES, UMUX-Lite, etc.)
+
+### 9. What is the MVP verification roadmap?
+
+**Overview**: Clearly state what to verify, when to start, who to work with, how to proceed, and how long the entire process will take.
+
+**Knock-Out Conditions**:
+- The period and phase divisions of MVP verification are clearly stated (e.g., design → implementation → measurement → learning)
+- The recruitment and securing plan for subjects is specifically described.
+
+### 10. How much will it cost?
+
+**Overview**: Clearly state the estimated costs for implementing the MVP.
+
+**Knock-Out Conditions**:
+- The breakdown of main costs such as MVP development costs, operating costs, and verification costs is clearly stated.
+- The response in case of exceeding the estimate (reduction plan such as scope reduction or cancellation) is clearly stated.
+
+### 11. What are the risks in implementation?
+
+**Overview**: Organize the risks expected in implementing MVP verification, and clearly state data, security, compliance, technical risks, etc.
+
+**Knock-Out Conditions**:
+- Risks are comprehensively stated in the following areas:
+  - Security / Privacy
+  - Legal / Compliance
+  - Technical / Operation (system failures, etc.)
+  - Reputation (reputation risk)
+- For each risk, one of the policies "avoidance, reduction, or acceptance" is clearly stated, and its content is appropriate.
+
+## Output Format for Evaluation Results
+
+Please answer in the following JSON format. Evaluate whether all Knock-Out conditions are met for each section.
+
+{
+  "missing_sections": [
+    {
+      "section_number": "1",
+      "section_name": "Problem to be solved",
+      "is_missing": false,
+      "is_incomplete": true,
+      "reason": "It is clearly stated that it is a problem-solving area that NBD should address, but the explanation of the problem situation and the significance of solving it is insufficient",
+      "checkpoints": [
+        {
+          "point": "It is clearly stated that it is a problem-solving area that NBD should address",
+          "status": "ok",
+          "note": "It can be confirmed that it matches the mission of the department"
+        },
+        {
+          "point": "Explanation of problem situation and significance of solving",
+          "status": "incomplete",
+          "note": "The explanation of the problem situation and the significance of solving it is insufficient"
+        }
+      ]
+    }
+  ],
+  "completeness_score": 65,
+  "category_scores": {
+    "Problem Setting": 70,
+    "Customer Understanding": 60,
+    "Value Provision": 75,
+    "Prototype": 50,
+    "Business Model": 70,
+    "Market Analysis": 65,
+    "Competitive Analysis": 60,
+    "Verification Plan": 55,
+    "Roadmap": 50,
+    "Budget Plan": 70,
+    "Risk Management": 60
+  },
+  "recommendations": [
+    "Define target customers not only by attributes but also from the perspective of 'situation, behavior, and motivation'",
+    "Add the results of impression evaluation for at least 5 actual subjects",
+    "Clearly state the value hypothesis in the format 'Enable Y in situation X, reduce Z'",
+    "Show numerically that SAM (Serviceable Available Market) is 10 billion yen or more",
+    "Set at least one target indicator for MVP verification in each category of behavioral indicators, quality indicators, and subjective indicators",
+    "Clearly state one of the policies 'avoidance, reduction, or acceptance' for each risk"
+  ],
+  "strengths": [
+    "The problem setting is clear and the significance of solving it is well explained",
+    "The revenue model is specific and the calculation formula is clearly stated"
+  ],
+  "critical_issues": [
+    "The prototype preparation status is unclear. Please add at least design drawings or screen images",
+    "The MVP verification roadmap is not specific, so please clarify the schedule and phase divisions"
+  ]
+}
+
+Text:
+` : `以下の新規事業構想書（MVP予算承認申請書）のテキストを分析し、審査基準（MVP予算承認までのチェック項目）に基づいて評価してください。
 
 ## 審査基準（MVP予算承認までのチェック項目）
 

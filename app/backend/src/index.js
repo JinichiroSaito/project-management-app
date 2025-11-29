@@ -3209,8 +3209,10 @@ app.post('/api/projects/:id/check-missing-sections', authenticateToken, requireA
     }
     
     // 不足部分をチェック
-    console.log(`[Check Missing Sections API] Starting analysis for project ${id}`);
-    const analysisResult = await checkMissingSections(projectData.extracted_text);
+    // リクエストから言語設定を取得（デフォルトは日本語）
+    const language = req.body.language || req.headers['accept-language']?.split(',')[0]?.split('-')[0] || 'ja';
+    console.log(`[Check Missing Sections API] Starting analysis for project ${id}, language: ${language}`);
+    const analysisResult = await checkMissingSections(projectData.extracted_text, language);
     
     if (!analysisResult) {
       console.error('[Check Missing Sections API] No analysis result returned');
