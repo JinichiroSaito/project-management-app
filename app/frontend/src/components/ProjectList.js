@@ -348,7 +348,6 @@ const ProjectList = () => {
                       onClick={async () => {
                         try {
                           // 現在の言語設定をリクエストに含める
-                          const { language } = useLanguage();
                           const response = await api.post(`/api/projects/${project.id}/check-missing-sections`, {
                             language: language || 'ja'
                           });
