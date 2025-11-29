@@ -22,7 +22,7 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
   const [kpiReportType, setKpiReportType] = useState(null);
   const [missingSections, setMissingSections] = useState(null);
   const [checkingSections, setCheckingSections] = useState(false);
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   useEffect(() => {
     fetchReviewers();
