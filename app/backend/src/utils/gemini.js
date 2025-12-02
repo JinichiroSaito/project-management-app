@@ -1,24 +1,31 @@
-// Gemini 3.0対応: 現在は@google/generative-aiを使用（@google/genaiは将来対応予定）
-// 環境変数GEMINI_USE_NEW_PACKAGE=trueで@google/genaiを有効化可能
-let GoogleGenAI, GoogleGenerativeAI;
-const useNewPackageEnv = process.env.GEMINI_USE_NEW_PACKAGE === 'true';
+// Vertex AI対応: @google/genaiを使用してVertex AIクライアントを初期化
+let GenAIClient, GoogleGenerativeAI;
+let useVertexAI = process.env.USE_VERTEX_AI === 'true' || process.env.GEMINI_USE_VERTEX_AI === 'true';
 
-if (useNewPackageEnv) {
+// Vertex AIを使用する場合
+if (useVertexAI) {
   try {
-    // 新しいパッケージを試す
     const genaiModule = require('@google/genai');
-    GoogleGenAI = genaiModule.GoogleGenAI;
-    if (!GoogleGenAI || typeof GoogleGenAI !== 'function') {
-      console.warn('[Gemini] @google/genai GoogleGenAI not found, using @google/generative-ai');
-      GoogleGenAI = null;
+    // Clientクラスを取得（Vertex AI用）
+    GenAIClient = genaiModule.Client || genaiModule.default?.Client;
+    if (!GenAIClient) {
+      console.warn('[Gemini] @google/genai Client not found, trying alternative import');
+      // 別のインポート方法を試す
+      const genai = require('@google/genai');
+      GenAIClient = genai.Client || genai.default?.Client;
+    }
+    if (!GenAIClient) {
+      console.warn('[Gemini] @google/genai Client not found, falling back to @google/generative-ai');
+      GenAIClient = null;
     }
   } catch (e) {
-    console.warn('[Gemini] @google/genai not available, using @google/generative-ai:', e.message);
-    GoogleGenAI = null;
+    console.warn('[Gemini] @google/genai not available, falling back to @google/generative-ai:', e.message);
+    GenAIClient = null;
+    useVertexAI = false;
   }
 }
 
-// 既存のパッケージを使用（デフォルト）
+// フォールバック用: 既存のパッケージを使用（APIキーベース）
 const generativeAiModule = require('@google/generative-ai');
 GoogleGenerativeAI = generativeAiModule.GoogleGenerativeAI;
 
@@ -28,36 +35,48 @@ const JSZip = require('jszip');
 const { DOMParser } = require('@xmldom/xmldom');
 
 // Gemini API初期化
-let genAI;
-let useNewPackage = false;
+let genAIClient;
+let useVertexAIMode = false;
 
 function initializeGemini() {
-  if (!genAI) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY environment variable is not set');
-    }
-    
-    // 環境変数で新しいパッケージの使用が有効化されている場合のみ試す
-    if (useNewPackageEnv && GoogleGenAI) {
+  if (!genAIClient) {
+    // Vertex AIを使用する場合
+    if (useVertexAI && GenAIClient) {
       try {
-        genAI = new GoogleGenAI({ apiKey });
-        useNewPackage = true;
-        console.log('✓ Gemini API initialized with @google/genai (Gemini 3.0 compatible)');
+        const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.PROJECT_ID || 'saito-test-gcp';
+        const location = process.env.VERTEX_AI_LOCATION || 'us-central1';
+        
+        // Vertex AIクライアントを初期化
+        genAIClient = new GenAIClient({
+          vertexai: true,
+          project: projectId,
+          location: location
+        });
+        useVertexAIMode = true;
+        console.log(`✓ Gemini API initialized with Vertex AI (@google/genai) - project: ${projectId}, location: ${location}`);
       } catch (e) {
-        console.warn('[Gemini] Failed to initialize @google/genai, falling back to @google/generative-ai:', e.message);
-        genAI = new GoogleGenerativeAI(apiKey);
-        useNewPackage = false;
-        console.log('✓ Gemini API initialized with @google/generative-ai');
+        console.warn('[Gemini] Failed to initialize Vertex AI, falling back to API key method:', e.message);
+        // フォールバック: APIキーベース
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+          throw new Error('GEMINI_API_KEY environment variable is not set and Vertex AI initialization failed');
+        }
+        genAIClient = new GoogleGenerativeAI(apiKey);
+        useVertexAIMode = false;
+        console.log('✓ Gemini API initialized with @google/generative-ai (API key)');
       }
     } else {
-      // デフォルト: 既存のパッケージを使用（安定版）
-      genAI = new GoogleGenerativeAI(apiKey);
-      useNewPackage = false;
-      console.log('✓ Gemini API initialized with @google/generative-ai');
+      // デフォルト: APIキーベース（既存の方法）
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('GEMINI_API_KEY environment variable is not set');
+      }
+      genAIClient = new GoogleGenerativeAI(apiKey);
+      useVertexAIMode = false;
+      console.log('✓ Gemini API initialized with @google/generative-ai (API key)');
     }
   }
-  return genAI;
+  return genAIClient;
 }
 
 // Cloud Storageからファイルをダウンロード
@@ -258,16 +277,9 @@ async function checkMissingSections(extractedText, language = 'ja') {
     
     // 環境変数でモデル名を指定可能
     // デフォルト: gemini-2.5-flash（安定版）
-    // Gemini 3.0モデル（gemini-3.0-pro, gemini-3.0-flashなど）は@google/generative-aiでも利用可能な場合があります
+    // Gemini 3.0モデル（gemini-3.0-pro, gemini-3.0-flashなど）も利用可能
     const modelName = process.env.GEMINI_MODEL_NAME || 'gemini-2.5-flash';
-    console.log(`[Check Missing Sections] Using Gemini model: ${modelName} (package: ${useNewPackage ? '@google/genai' : '@google/generative-ai'}), language: ${language}`);
-    
-    // 新しいパッケージの場合は直接genAI.models.generateContentを使用
-    let useDirectAPI = false;
-    if (useNewPackage && genAI.models && typeof genAI.models.generateContent === 'function') {
-      useDirectAPI = true;
-      console.log('[Check Missing Sections] Using direct API: genAI.models.generateContent');
-    }
+    console.log(`[Check Missing Sections] Using Gemini model: ${modelName} (mode: ${useVertexAIMode ? 'Vertex AI' : 'API Key'}), language: ${language}`);
     
     // 言語に応じてプロンプトを切り替え
     const isEnglish = language === 'en';
@@ -602,67 +614,34 @@ ${extractedText}`;
     console.log('[Check Missing Sections] Sending request to Gemini API...');
     let result, responseText;
     
-    if (useDirectAPI) {
-      // @google/genaiの直接APIを使用（提供されたコード例に基づく）
+    if (useVertexAIMode) {
+      // Vertex AIを使用する場合
       try {
-        console.log(`[Check Missing Sections] Calling genAI.models.generateContent with model: ${modelName}`);
-        result = await genAI.models.generateContent({
-          model: modelName,
-          contents: [prompt]
-        });
+        console.log(`[Check Missing Sections] Using Vertex AI with model: ${modelName}`);
+        const model = genAIClient.models.get(modelName);
+        result = await model.generateContent({ contents: prompt });
         
-        // レスポンスの形式を確認
-        console.log('[Check Missing Sections] Response received, type:', typeof result);
-        console.log('[Check Missing Sections] Response keys:', Object.keys(result || {}));
-        
-        // レスポンスからテキストを抽出
-        if (result && result.response) {
-          if (typeof result.response.text === 'function') {
-            responseText = result.response.text();
-          } else if (typeof result.response === 'string') {
-            responseText = result.response;
-          } else if (result.response.text) {
-            responseText = result.response.text;
-          }
-        } else if (result && typeof result.text === 'function') {
-          responseText = await result.text();
+        // Vertex AIのレスポンスからテキストを抽出
+        if (result && result.text) {
+          responseText = typeof result.text === 'function' ? await result.text() : result.text;
+        } else if (result && result.response && result.response.text) {
+          responseText = typeof result.response.text === 'function' ? await result.response.text() : result.response.text;
         } else if (result && typeof result === 'string') {
           responseText = result;
-        } else if (result && result.text) {
-          responseText = result.text;
         } else {
-          throw new Error('Unexpected response format from @google/genai');
+          throw new Error('Unexpected response format from Vertex AI');
         }
         
         console.log(`[Check Missing Sections] Extracted text length: ${responseText?.length || 0}`);
       } catch (apiError) {
-        console.error('[Check Missing Sections] Error with @google/genai API:', apiError.message);
+        console.error('[Check Missing Sections] Error with Vertex AI:', apiError.message);
         console.error('[Check Missing Sections] Error stack:', apiError.stack);
-        // フォールバック: 古いパッケージに戻す
-        console.log('[Check Missing Sections] Falling back to @google/generative-ai');
-        useNewPackage = false;
-        useDirectAPI = false;
-        const generativeAiModule = require('@google/generative-ai');
-        const GoogleGenerativeAI = generativeAiModule.GoogleGenerativeAI;
-        const apiKey = process.env.GEMINI_API_KEY;
-        genAI = new GoogleGenerativeAI(apiKey);
-        // モデルが利用できない場合は、デフォルトモデルにフォールバック
-        const fallbackModel = 'gemini-2.5-flash';
-        console.log(`[Check Missing Sections] Attempting fallback to model: ${fallbackModel}`);
-        try {
-          const model = genAI.getGenerativeModel({ model: fallbackModel });
-          result = await model.generateContent(prompt);
-          const response = await result.response;
-          responseText = response.text();
-        } catch (fallbackError) {
-          console.error('[Check Missing Sections] Fallback model also failed:', fallbackError.message);
-          throw new Error(`Gemini API error: ${apiError.message}. Fallback also failed: ${fallbackError.message}`);
-        }
+        throw new Error(`Vertex AI error: ${apiError.message}`);
       }
     } else {
-      // 既存のパッケージの使用方法
+      // APIキーベース（既存の方法）
       try {
-        const model = genAI.getGenerativeModel({ model: modelName });
+        const model = genAIClient.getGenerativeModel({ model: modelName });
         result = await model.generateContent(prompt);
         const response = await result.response;
         responseText = response.text();
@@ -671,7 +650,7 @@ ${extractedText}`;
         if (modelError.message && (modelError.message.includes('not found') || modelError.message.includes('not available'))) {
           console.warn(`[Check Missing Sections] Model ${modelName} not available, falling back to gemini-2.5-flash`);
           const fallbackModel = 'gemini-2.5-flash';
-          const model = genAI.getGenerativeModel({ model: fallbackModel });
+          const model = genAIClient.getGenerativeModel({ model: fallbackModel });
           result = await model.generateContent(prompt);
           const response = await result.response;
           responseText = response.text();
@@ -719,7 +698,7 @@ async function businessAdvisorChat(message, conversationHistory = [], userDocume
     initializeGemini();
     
     const modelName = process.env.GEMINI_MODEL_NAME || 'gemini-2.5-flash';
-    console.log(`[Business Advisor Chat] Using Gemini model: ${modelName}`);
+    console.log(`[Business Advisor Chat] Using Gemini model: ${modelName} (mode: ${useVertexAIMode ? 'Vertex AI' : 'API Key'})`);
     console.log(`[Business Advisor Chat] User document text length: ${userDocumentText ? userDocumentText.length : 0}`);
     
     // システムプロンプト
@@ -824,45 +803,34 @@ NBDの事業創出プロセスは、おおよそ次のステップで進む。
 
     const fullPrompt = `${systemPrompt}${documentContext}\n\n${conversationContext}ユーザー: ${message}\n\nアドバイザー:`;
 
-    let useDirectAPI = false;
-    if (useNewPackage && genAI.models && typeof genAI.models.generateContent === 'function') {
-      useDirectAPI = true;
-    }
-
     console.log('[Business Advisor Chat] Sending request to Gemini API...');
     let result, responseText;
 
-    if (useDirectAPI) {
+    if (useVertexAIMode) {
+      // Vertex AIを使用する場合
       try {
-        result = await genAI.models.generateContent({
-          model: modelName,
-          contents: [fullPrompt]
-        });
+        console.log(`[Business Advisor Chat] Using Vertex AI with model: ${modelName}`);
+        const model = genAIClient.models.get(modelName);
+        result = await model.generateContent({ contents: fullPrompt });
         
-        if (result && result.response) {
-          if (typeof result.response.text === 'function') {
-            responseText = result.response.text();
-          } else if (typeof result.response === 'string') {
-            responseText = result.response;
-          } else if (result.response.text) {
-            responseText = result.response.text;
-          }
-        } else if (result && typeof result.text === 'function') {
-          responseText = await result.text();
+        // Vertex AIのレスポンスからテキストを抽出
+        if (result && result.text) {
+          responseText = typeof result.text === 'function' ? await result.text() : result.text;
+        } else if (result && result.response && result.response.text) {
+          responseText = typeof result.response.text === 'function' ? await result.response.text() : result.response.text;
         } else if (result && typeof result === 'string') {
           responseText = result;
-        } else if (result && result.text) {
-          responseText = result.text;
         } else {
-          throw new Error('Unexpected response format from @google/genai');
+          throw new Error('Unexpected response format from Vertex AI');
         }
       } catch (apiError) {
-        console.error('[Business Advisor Chat] Error with @google/genai API:', apiError.message);
+        console.error('[Business Advisor Chat] Error with Vertex AI:', apiError.message);
         throw apiError;
       }
     } else {
+      // APIキーベース（既存の方法）
       try {
-        const model = genAI.getGenerativeModel({ model: modelName });
+        const model = genAIClient.getGenerativeModel({ model: modelName });
         result = await model.generateContent(fullPrompt);
         const response = await result.response;
         responseText = response.text();
@@ -871,7 +839,7 @@ NBDの事業創出プロセスは、おおよそ次のステップで進む。
         if (modelError.message && (modelError.message.includes('not found') || modelError.message.includes('not available'))) {
           console.warn(`[Business Advisor Chat] Model ${modelName} not available, falling back to gemini-2.5-flash`);
           const fallbackModel = 'gemini-2.5-flash';
-          const model = genAI.getGenerativeModel({ model: fallbackModel });
+          const model = genAIClient.getGenerativeModel({ model: fallbackModel });
           result = await model.generateContent(fullPrompt);
           const response = await result.response;
           responseText = response.text();
