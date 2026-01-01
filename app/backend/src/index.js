@@ -799,9 +799,48 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
 
     // 審査状況の詳細を計算
     const reviewerApprovals = projectWithRoute.reviewer_approvals || {};
+    console.log('[Approval Status] Reviewer approvals raw:', JSON.stringify(reviewerApprovals));
+    console.log('[Approval Status] Reviewer approvals keys:', Object.keys(reviewerApprovals));
+    console.log('[Approval Status] Reviewers:', reviewers.rows.map(r => ({ id: r.id, name: r.name })));
+    
     const reviewerStatuses = reviewers.rows.map(reviewer => {
-      // reviewer_approvalsのキーは文字列として保存されている可能性があるため、両方を試す
-      const approval = reviewerApprovals[String(reviewer.id)] || reviewerApprovals[reviewer.id] || null;
+      // reviewer_approvalsのキーは数値または文字列として保存されている可能性があるため、すべての形式を試す
+      const reviewerId = reviewer.id;
+      const stringKey = String(reviewerId);
+      const numericKey = reviewerId;
+      const numberKey = Number(reviewerId);
+      
+      // すべてのキー形式を試す
+      let approval = reviewerApprovals[stringKey] || 
+                    reviewerApprovals[numericKey] || 
+                    reviewerApprovals[numberKey] ||
+                    null;
+      
+      // キーが数値として保存されている場合、すべてのキーをチェック
+      if (!approval) {
+        const allKeys = Object.keys(reviewerApprovals);
+        const matchingKey = allKeys.find(key => Number(key) === reviewerId);
+        if (matchingKey) {
+          approval = reviewerApprovals[matchingKey];
+        }
+      }
+      
+      // 空のオブジェクトの場合はnullとして扱う
+      if (approval && typeof approval === 'object' && Object.keys(approval).length === 0) {
+        approval = null;
+      }
+      
+      console.log('[Approval Status] Reviewer approval lookup:', {
+        reviewerId,
+        stringKey,
+        numericKey,
+        numberKey,
+        approval,
+        hasStringKey: stringKey in reviewerApprovals,
+        hasNumericKey: numericKey in reviewerApprovals,
+        allKeys: Object.keys(reviewerApprovals)
+      });
+      
       return {
         id: reviewer.id, // フロントエンドが期待する形式
         reviewer_id: reviewer.id, // 後方互換性のため
