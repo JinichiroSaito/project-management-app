@@ -371,6 +371,8 @@ export const translations = {
     'review.analysis.unknown': 'Unknown',
     'review.analysis.rerun': 'Re-run in current language',
     'review.analysis.rechecking': 'Rechecking...',
+    'review.analysis.viewDetails': 'View full details',
+    'common.close': 'Close',
     
     // Business Advisor Chat
     'chat.title': 'Business Advisor',
@@ -786,6 +788,8 @@ export const translations = {
     'review.analysis.unknown': '不明',
     'review.analysis.rerun': '現在の言語で再評価',
     'review.analysis.rechecking': '再評価中...',
+    'review.analysis.viewDetails': '詳細を見る',
+    'common.close': '閉じる',
     
     // Business Advisor Chat
     'chat.title': 'ビジネスアドバイザー',

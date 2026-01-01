@@ -19,6 +19,7 @@ const ReviewDashboard = () => {
   const [showDebug, setShowDebug] = useState(false);
   const [expandedAnalysis, setExpandedAnalysis] = useState({});
   const [recheckLoading, setRecheckLoading] = useState({});
+  const [analysisProject, setAnalysisProject] = useState(null);
 
   useEffect(() => {
     fetchPendingReviews();
@@ -103,6 +104,16 @@ const ReviewDashboard = () => {
     return 'over_500m';
   };
 
+  const parseMissingSections = (project) => {
+    if (!project?.missing_sections) return null;
+    if (typeof project.missing_sections === 'object') return project.missing_sections;
+    try {
+      return JSON.parse(project.missing_sections);
+    } catch {
+      return null;
+    }
+  };
+
   const recheckAnalysis = async (project) => {
     if (!project?.id) return;
     setRecheckLoading((prev) => ({ ...prev, [project.id]: true }));
@@ -147,6 +158,135 @@ const ReviewDashboard = () => {
     } finally {
       setRecheckLoading((prev) => ({ ...prev, [project.id]: false }));
     }
+  };
+
+  const renderAnalysisModal = () => {
+    if (!analysisProject) return null;
+    const missingSections = parseMissingSections(analysisProject);
+    if (!missingSections) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto p-6">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h3 className="text-xl font-bold text-gray-900 mb-1">{analysisProject.name}</h3>
+              <p className="text-sm text-gray-600">
+                {t('review.analysis.updatedAt', 'Updated')}{' '}
+                {analysisProject.missing_sections_updated_at
+                  ? new Date(analysisProject.missing_sections_updated_at).toLocaleString()
+                  : t('review.analysis.unknown', 'Unknown')}
+              </p>
+            </div>
+            <button
+              onClick={() => setAnalysisProject(null)}
+              className="text-gray-500 hover:text-gray-700 text-sm"
+            >
+              {t('common.close', 'Close')}
+            </button>
+          </div>
+
+          {missingSections.completeness_score !== undefined && (
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold text-gray-800 mb-2">
+                {t('projectApplication.analysis.completeness', 'Completeness Score')}
+              </h4>
+              <div className="flex items-center space-x-3">
+                <span className="text-2xl font-bold">{missingSections.completeness_score}%</span>
+                <div className="flex-1 bg-gray-200 rounded-full h-2">
+                  <div
+                    className="h-2 rounded-full bg-indigo-600"
+                    style={{ width: `${missingSections.completeness_score}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {missingSections.category_scores && (
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold text-gray-800 mb-2">
+                {t('projectApplication.analysis.categoryScores', 'Category Scores')}
+              </h4>
+              <div className="grid md:grid-cols-2 gap-2">
+                {Object.entries(missingSections.category_scores).map(([category, score]) => (
+                  <div key={category} className="border border-gray-200 rounded p-2 text-xs">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-gray-700 truncate">{category}</span>
+                      <span className="font-semibold">{score}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                      <div
+                        className="h-1.5 rounded-full bg-indigo-600"
+                        style={{ width: `${score}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {missingSections.missing_sections && missingSections.missing_sections.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold text-gray-800 mb-2">
+                {t('projectApplication.analysis.missingSections', 'Missing Sections')} ({missingSections.missing_sections.length})
+              </h4>
+              <div className="space-y-1 text-sm text-gray-800">
+                {missingSections.missing_sections.map((section, idx) => (
+                  <div key={idx} className="p-2 rounded border border-yellow-100 bg-yellow-50">
+                    <div className="font-medium text-yellow-900">
+                      {section.section_number}. {t(`projectApplication.sectionName.${section.section_name}`, section.section_name)}
+                    </div>
+                    <div className="text-xs text-yellow-800">
+                      {section.is_missing && <span className="mr-2">({t('projectApplication.analysis.missing', 'Missing')})</span>}
+                      {section.is_incomplete && <span className="mr-2">({t('projectApplication.analysis.incomplete', 'Incomplete')})</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {missingSections.critical_issues && missingSections.critical_issues.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold text-red-800 mb-2">
+                {t('projectApplication.analysis.criticalIssues', 'Critical Issues')}
+              </h4>
+              <ul className="list-disc list-inside text-sm text-red-900 space-y-1">
+                {missingSections.critical_issues.map((issue, idx) => (
+                  <li key={idx}>{issue}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {missingSections.strengths && missingSections.strengths.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold text-green-800 mb-2">
+                {t('projectApplication.analysis.strengths', 'Strengths')}
+              </h4>
+              <ul className="list-disc list-inside text-sm text-green-900 space-y-1">
+                {missingSections.strengths.map((item, idx) => (
+                  <li key={idx}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {analysisProject.extracted_text && (
+            <div className="mb-2">
+              <h4 className="text-sm font-semibold text-gray-800 mb-2">
+                {t('projectApplication.analysis.fullText', 'Full extracted text:')}
+              </h4>
+              <pre className="text-xs text-gray-800 whitespace-pre-wrap max-h-64 overflow-auto bg-gray-50 border border-gray-200 rounded p-3">
+                {analysisProject.extracted_text}
+              </pre>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -348,6 +488,12 @@ const ReviewDashboard = () => {
                       {project.missing_sections_updated_at ? new Date(project.missing_sections_updated_at).toLocaleString() : t('review.analysis.unknown', 'Unknown')}
                     </span>
                     <div className="flex items-center space-x-2">
+                      <button
+                        className="text-xs text-gray-700 underline"
+                        onClick={() => setAnalysisProject(project)}
+                      >
+                        {t('review.analysis.viewDetails', 'View full details')}
+                      </button>
                       <button
                         className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
                         onClick={() =>
@@ -664,6 +810,9 @@ const ReviewDashboard = () => {
           )}
         </>
       )}
+
+      {/* Analysis detail modal */}
+      {renderAnalysisModal()}
     </div>
   );
 };
