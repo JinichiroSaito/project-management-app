@@ -76,11 +76,12 @@ function AppContentInner() {
   const isReviewer = userInfo?.position === 'reviewer';
   const isExecutor = userInfo?.position === 'executor';
   const isAdmin = userInfo?.is_admin || false;
+  const isFinalApprover = userInfo?.is_final_approver || false;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
-      {(isAdmin || isReviewer) && (
+      {(isAdmin || isReviewer || isFinalApprover) && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex space-x-4 flex-wrap">
             {isAdmin && (
@@ -99,7 +100,7 @@ function AppContentInner() {
                 {showAdmin ? t('admin.hideDashboard', 'Hide Admin Dashboard') : t('admin.showDashboard', 'Show Admin Dashboard')}
               </button>
             )}
-            {isReviewer && (
+            {(isReviewer || isFinalApprover) && (
               <button
                 onClick={() => {
                   setShowReview(!showReview);
@@ -115,7 +116,7 @@ function AppContentInner() {
                 {showReview ? t('review.hideDashboard', 'Hide Review Dashboard') : t('review.showDashboard', 'Show Review Dashboard')}
               </button>
             )}
-            {(isAdmin || isReviewer) && (
+            {(isAdmin || isReviewer || isFinalApprover) && (
               <button
                 onClick={() => {
                   setShowApprovedDashboard(!showApprovedDashboard);
@@ -136,7 +137,7 @@ function AppContentInner() {
       )}
       {showAdmin && isAdmin ? (
         <AdminDashboard />
-      ) : showReview && isReviewer ? (
+      ) : showReview && (isReviewer || isFinalApprover) ? (
         <ReviewDashboard />
       ) : showApprovedDashboard ? (
         <ApprovedProjectsDashboard />

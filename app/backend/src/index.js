@@ -489,15 +489,31 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
     
     // 審査者または最終決裁者であることを確認
     if (!isReviewer) {
-      // 最終決裁者としてのアクセスを確認（final_approver_user_idが設定されているプロジェクトがあるか）
+      // 最終決裁者としてのアクセスを確認（approval_routesテーブルでfinal_approver_user_idが設定されているか）
       const finalApproverCheck = await db.query(
-        'SELECT COUNT(*) as count FROM projects WHERE final_approver_user_id = $1',
+        'SELECT COUNT(*) as count FROM approval_routes WHERE final_approver_user_id = $1',
         [userId]
       );
       
-      if (parseInt(finalApproverCheck.rows[0]?.count || 0) === 0) {
+      const isFinalApprover = parseInt(finalApproverCheck.rows[0]?.count || 0) > 0;
+      
+      // 念のため、プロジェクトでfinal_approver_user_idが設定されているかも確認
+      const projectCheck = await db.query(
+        'SELECT COUNT(*) as count FROM projects WHERE final_approver_user_id = $1',
+        [userId]
+      );
+      const projectCount = parseInt(projectCheck.rows[0]?.count || 0);
+      
+      if (!isFinalApprover && projectCount === 0) {
         return res.status(403).json({ error: 'Only reviewers or final approvers can access this endpoint' });
       }
+      
+      console.log('[Review Pending] Final approver access confirmed:', {
+        userId: userId,
+        email: req.user.email,
+        isFinalApprover: isFinalApprover,
+        projectCount: projectCount
+      });
     }
     
     let result;
@@ -1686,11 +1702,20 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
     }
     
     const user = result.rows[0];
+    
+    // 最終決裁者かどうかを確認（approval_routesテーブルでfinal_approver_user_idが設定されているか）
+    const finalApproverCheck = await db.query(
+      'SELECT COUNT(*) as count FROM approval_routes WHERE final_approver_user_id = $1',
+      [user.id]
+    );
+    const isFinalApprover = parseInt(finalApproverCheck.rows[0]?.count || 0) > 0;
+    
     res.json({
       user: {
         ...req.user,
         ...user,
-        needsProfile: !user.name || !user.company || !user.department || !user.position
+        needsProfile: !user.name || !user.company || !user.department || !user.position,
+        is_final_approver: isFinalApprover
       }
     });
   } catch (error) {
