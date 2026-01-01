@@ -969,6 +969,13 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     const projectResult = await db.query('SELECT * FROM projects WHERE id = $1', [id]);
     if (projectResult.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
     const project = await ensureProjectRoute(projectResult.rows[0]);
+    
+    // ensureProjectRouteの後に、データベースから最新のreviewer_approvalsを再取得
+    const latestProjectResult = await db.query(
+      'SELECT reviewer_approvals FROM projects WHERE id = $1',
+      [id]
+    );
+    const latestReviewerApprovals = latestProjectResult.rows[0]?.reviewer_approvals || {};
 
     const assignedReviewers = await db.query(
       'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1 AND reviewer_id = $2',
@@ -978,8 +985,8 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
       return res.status(403).json({ error: 'You are not assigned as a reviewer for this project' });
     }
 
-    // 楽観的ロック：現在のreviewer_approvalsを取得してから更新
-    const currentApprovals = project.reviewer_approvals || {};
+    // 楽観的ロック：現在のreviewer_approvalsを取得してから更新（最新のデータを使用）
+    const currentApprovals = latestReviewerApprovals;
     // JSONBのキーは文字列として保存されるため、文字列キーを使用
     const userIdKey = String(userId);
     
