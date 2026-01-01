@@ -13,7 +13,7 @@ const ReviewDashboard = () => {
   const [selectedApprovedProject, setSelectedApprovedProject] = useState(null);
   const [reviewComment, setReviewComment] = useState('');
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'approved'
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   const [debugInfo, setDebugInfo] = useState(null);
   const [showDebug, setShowDebug] = useState(false);
