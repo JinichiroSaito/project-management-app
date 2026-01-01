@@ -902,40 +902,8 @@ app.post('/api/projects', uploadLimiter, authenticateToken, requireApproved, upl
       return res.status(403).json({ error: 'Only project executors can create project applications' });
     }
     
-    // 審査者IDを処理（reviewer_idsを優先、なければreviewer_idを使用）
-    let reviewerIds = [];
-    if (reviewer_ids) {
-      // 配列またはカンマ区切り文字列を処理
-      if (Array.isArray(reviewer_ids)) {
-        reviewerIds = reviewer_ids.map(id => parseInt(id)).filter(id => !isNaN(id));
-      } else if (typeof reviewer_ids === 'string') {
-        reviewerIds = reviewer_ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
-      }
-    } else if (reviewer_id) {
-      // 後方互換性のため、単一のreviewer_idもサポート
-      const id = parseInt(reviewer_id);
-      if (!isNaN(id)) {
-        reviewerIds = [id];
-      }
-    }
-    
-    // 審査者IDが指定されている場合、プロジェクト審査者（reviewer）であることを確認
-    if (reviewerIds.length > 0) {
-      const placeholders = reviewerIds.map((_, i) => `$${i + 1}`).join(',');
-      const reviewers = await db.query(
-        `SELECT id, position FROM users WHERE id IN (${placeholders})`,
-        reviewerIds
-      );
-      
-      if (reviewers.rows.length !== reviewerIds.length) {
-        return res.status(404).json({ error: 'One or more reviewers not found' });
-      }
-      
-      const invalidReviewers = reviewers.rows.filter(r => r.position !== 'reviewer');
-      if (invalidReviewers.length > 0) {
-        return res.status(400).json({ error: 'All reviewers must have the reviewer position' });
-      }
-    }
+    // 審査者は実行者が設定できません。承認ルート（approval_routes）に基づいて自動的に設定されます。
+    // フロントエンドから送信されたreviewer_idsやreviewer_idは無視されます。
     
     // ファイルアップロード処理
     let fileInfo = null;
@@ -970,8 +938,7 @@ app.post('/api/projects', uploadLimiter, authenticateToken, requireApproved, upl
       // トランザクション内でプロジェクト作成と審査者の割り当てを実行
       result = await db.withTransaction(async (client) => {
         // ファイルアップロードカラムが存在する場合のINSERT
-        // 後方互換性のため、最初の審査者IDをreviewer_idに設定
-        const firstReviewerId = reviewerIds.length > 0 ? reviewerIds[0] : null;
+        // 審査者は承認ルート（approval_routes）に基づいて自動的に設定されるため、reviewer_idはnull
         const projectResult = await client.query(
           `INSERT INTO projects (
             name, description, status, executor_id, reviewer_id, requested_amount, application_status,
@@ -982,7 +949,7 @@ app.post('/api/projects', uploadLimiter, authenticateToken, requireApproved, upl
             description || '', 
             'planning', 
             executorId, 
-            firstReviewerId, 
+            null, // 審査者は承認ルートに基づいて自動設定される
             requested_amount, 
             'draft',
             fileInfo?.url || null,
@@ -995,19 +962,9 @@ app.post('/api/projects', uploadLimiter, authenticateToken, requireApproved, upl
         
         const projectId = projectResult.rows[0].id;
         
-        // project_reviewersテーブルに複数の審査者を保存
-        if (reviewerIds.length > 0) {
-          console.log('[Project Create] Saving reviewers to project_reviewers table:', {
-            projectId: projectId,
-            reviewerIds: reviewerIds
-          });
-          for (const reviewerId of reviewerIds) {
-            await client.query(
-              'INSERT INTO project_reviewers (project_id, reviewer_id) VALUES ($1, $2) ON CONFLICT (project_id, reviewer_id) DO NOTHING',
-              [projectId, reviewerId]
-            );
-          }
-        }
+        // 承認ルート（approval_routes）に基づいて審査者を自動設定
+        const project = projectResult.rows[0];
+        await ensureProjectRoute(project);
         
         return projectResult;
       });
@@ -1262,38 +1219,42 @@ app.put('/api/projects/:id', uploadLimiter, authenticateToken, upload.single('ap
       return res.status(403).json({ error: 'Reviewers can only approve or reject applications' });
     }
     
-    // 審査者IDを処理（reviewer_idsを優先、なければreviewer_idを使用）
+    // 実行者は審査者を設定できません。審査者は承認ルート（approval_routes）に基づいて自動的に設定されます。
+    // 実行者が審査者を変更しようとした場合は無視します（管理者のみ審査者を変更可能）
     let reviewerIdsToUpdate = [];
-    if (reviewer_ids) {
-      // 配列またはカンマ区切り文字列を処理
-      if (Array.isArray(reviewer_ids)) {
-        reviewerIdsToUpdate = reviewer_ids.map(id => parseInt(id)).filter(id => !isNaN(id));
-      } else if (typeof reviewer_ids === 'string') {
-        reviewerIdsToUpdate = reviewer_ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
-      }
-    } else if (reviewer_id) {
-      // 後方互換性のため、単一のreviewer_idもサポート
-      const id = parseInt(reviewer_id);
-      if (!isNaN(id)) {
-        reviewerIdsToUpdate = [id];
-      }
-    }
-    
-    // 審査者IDが指定されている場合、プロジェクト審査者であることを確認
-    if (reviewerIdsToUpdate.length > 0) {
-      const placeholders = reviewerIdsToUpdate.map((_, i) => `$${i + 1}`).join(',');
-      const reviewers = await db.query(
-        `SELECT id, position FROM users WHERE id IN (${placeholders})`,
-        reviewerIdsToUpdate
-      );
-      
-      if (reviewers.rows.length !== reviewerIdsToUpdate.length) {
-        return res.status(404).json({ error: 'One or more reviewers not found' });
+    if (!isExecutor && (reviewer_ids || reviewer_id)) {
+      // 管理者のみ審査者を変更可能
+      if (reviewer_ids) {
+        // 配列またはカンマ区切り文字列を処理
+        if (Array.isArray(reviewer_ids)) {
+          reviewerIdsToUpdate = reviewer_ids.map(id => parseInt(id)).filter(id => !isNaN(id));
+        } else if (typeof reviewer_ids === 'string') {
+          reviewerIdsToUpdate = reviewer_ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+        }
+      } else if (reviewer_id) {
+        // 後方互換性のため、単一のreviewer_idもサポート
+        const id = parseInt(reviewer_id);
+        if (!isNaN(id)) {
+          reviewerIdsToUpdate = [id];
+        }
       }
       
-      const invalidReviewers = reviewers.rows.filter(r => r.position !== 'reviewer');
-      if (invalidReviewers.length > 0) {
-        return res.status(400).json({ error: 'All reviewers must have the reviewer position' });
+      // 審査者IDが指定されている場合、プロジェクト審査者であることを確認
+      if (reviewerIdsToUpdate.length > 0) {
+        const placeholders = reviewerIdsToUpdate.map((_, i) => `$${i + 1}`).join(',');
+        const reviewers = await db.query(
+          `SELECT id, position FROM users WHERE id IN (${placeholders})`,
+          reviewerIdsToUpdate
+        );
+        
+        if (reviewers.rows.length !== reviewerIdsToUpdate.length) {
+          return res.status(404).json({ error: 'One or more reviewers not found' });
+        }
+        
+        const invalidReviewers = reviewers.rows.filter(r => r.position !== 'reviewer');
+        if (invalidReviewers.length > 0) {
+          return res.status(400).json({ error: 'All reviewers must have the reviewer position' });
+        }
       }
     }
     
@@ -1377,6 +1338,12 @@ app.put('/api/projects/:id', uploadLimiter, authenticateToken, upload.single('ap
         
         return updateResult;
       });
+      
+      // requested_amountが変更された場合、承認ルートを再適用（実行者が審査者を変更できないようにするため）
+      if (requested_amount && isExecutor) {
+        const updatedProject = result.rows[0];
+        await ensureProjectRoute(updatedProject);
+      }
       
       // 新しいファイルがアップロードされた場合、古いファイルを削除（非同期で実行、エラーは無視）
       if (fileInfo && oldFileUrl) {

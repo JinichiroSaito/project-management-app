@@ -8,12 +8,11 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
   const [formData, setFormData] = useState({
     name: project?.name || '',
     description: project?.description || '',
-    requested_amount: project?.requested_amount || '',
-    reviewer_id: project?.reviewer_id || '', // 後方互換性のため残す
-    reviewer_ids: project?.reviewers ? project.reviewers.map(r => r.id) : (project?.reviewer_id ? [project.reviewer_id] : [])
+    requested_amount: project?.requested_amount || ''
+    // 審査者は承認ルートに基づいて自動的に設定されるため、実行者は設定できません
   });
   const [selectedFile, setSelectedFile] = useState(null);
-  const [reviewers, setReviewers] = useState([]);
+  // 審査者は承認ルートに基づいて自動的に設定されるため、reviewers stateは不要
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [kpiReports, setKpiReports] = useState([]);
@@ -25,7 +24,8 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
   const { t, language } = useLanguage();
 
   useEffect(() => {
-    fetchReviewers();
+    // 審査者は承認ルートに基づいて自動的に設定されるため、実行者は審査者を選択できません
+    // fetchReviewers(); // 削除
     if (project?.id) {
       fetchKpiReports();
       fetchMissingSections();
@@ -39,26 +39,13 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
       setFormData({
         name: project.name || '',
         description: project.description || '',
-        requested_amount: project.requested_amount || '',
-        reviewer_id: project.reviewer_id || '', // 後方互換性のため残す
-        reviewer_ids: project.reviewers ? project.reviewers.map(r => r.id) : (project.reviewer_id ? [project.reviewer_id] : [])
+        requested_amount: project.requested_amount || ''
+        // 審査者は承認ルートに基づいて自動的に設定されるため、実行者は設定できません
       });
     }
   }, [project]);
 
-  const fetchReviewers = async () => {
-    try {
-      const response = await api.get('/api/users/reviewers');
-      console.log('[ProjectApplicationForm] Fetched reviewers:', response.data.reviewers);
-      setReviewers(response.data.reviewers || []);
-      if (!response.data.reviewers || response.data.reviewers.length === 0) {
-        setError(t('projectApplication.noReviewers', 'No reviewers available. Please contact an administrator.'));
-      }
-    } catch (error) {
-      console.error('Error fetching reviewers:', error);
-      setError(error.response?.data?.error || t('projectApplication.errorFetchingReviewers', 'Failed to fetch reviewers. Please try again.'));
-    }
-  };
+  // 審査者は承認ルートに基づいて自動的に設定されるため、fetchReviewers関数は不要
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -71,13 +58,7 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
       formDataToSend.append('name', formData.name);
       formDataToSend.append('description', formData.description || '');
       formDataToSend.append('requested_amount', formData.requested_amount);
-      // 複数の審査者IDを送信（reviewer_idsを優先）
-      if (formData.reviewer_ids && formData.reviewer_ids.length > 0) {
-        formDataToSend.append('reviewer_ids', formData.reviewer_ids.join(','));
-      } else if (formData.reviewer_id) {
-        // 後方互換性のため、単一のreviewer_idもサポート
-        formDataToSend.append('reviewer_id', formData.reviewer_id);
-      }
+      // 審査者は承認ルート（approval_routes）に基づいて自動的に設定されるため、送信しません
       
       console.log('[ProjectApplicationForm] Submitting form:', {
         hasSelectedFile: !!selectedFile,
@@ -169,12 +150,7 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
   };
 
   const handleSubmitApplication = async () => {
-    if (!formData.reviewer_ids || formData.reviewer_ids.length === 0) {
-      if (!formData.reviewer_id) {
-        setError(t('projectApplication.reviewerRequired', 'Please select at least one reviewer before submitting'));
-        return;
-      }
-    }
+    // 審査者は承認ルート（approval_routes）に基づいて自動的に設定されるため、バリデーションは不要
 
     try {
       setLoading(true);
@@ -631,44 +607,11 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {t('projectApplication.reviewer', 'Reviewer')} * ({t('projectApplication.selectMultiple', 'You can select multiple reviewers')})
-            </label>
-            <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-300 rounded-md p-3">
-              {reviewers.length === 0 ? (
-                <p className="text-gray-500 text-sm">{t('projectApplication.noReviewers', 'No reviewers available. Please contact an administrator.')}</p>
-              ) : (
-                reviewers.map((reviewer) => (
-                  <label key={reviewer.id} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                    <input
-                      type="checkbox"
-                      checked={formData.reviewer_ids?.includes(reviewer.id) || false}
-                      onChange={(e) => {
-                        const currentIds = formData.reviewer_ids || [];
-                        if (e.target.checked) {
-                          setFormData({ 
-                            ...formData, 
-                            reviewer_ids: [...currentIds, reviewer.id],
-                            reviewer_id: currentIds.length === 0 ? reviewer.id : formData.reviewer_id // 後方互換性のため最初のIDを設定
-                          });
-                        } else {
-                          setFormData({ 
-                            ...formData, 
-                            reviewer_ids: currentIds.filter(id => id !== reviewer.id),
-                            reviewer_id: currentIds.filter(id => id !== reviewer.id)[0] || '' // 後方互換性のため最初のIDを設定
-                          });
-                        }
-                      }}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                    <span className="text-sm">
-                      {reviewer.name} ({reviewer.email}) - {reviewer.company}
-                    </span>
-                  </label>
-                ))
-              )}
-            </div>
+          {/* 審査者は承認ルート（approval_routes）に基づいて自動的に設定されるため、実行者は審査者を選択できません */}
+          <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+            <p className="text-sm text-blue-800">
+              {t('projectApplication.reviewerAutoAssigned', 'Reviewers will be automatically assigned based on the requested amount and approval routes configured by administrators.')}
+            </p>
           </div>
 
           {/* KPI Reports Section */}
@@ -798,7 +741,7 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
               <button
                 type="button"
                 onClick={handleSubmitApplication}
-                disabled={loading || (!formData.reviewer_ids || formData.reviewer_ids.length === 0) && !formData.reviewer_id}
+                disabled={loading}
                 className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50"
               >
                 {t('projectApplication.submit', 'Submit for Review')}
