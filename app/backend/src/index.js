@@ -961,10 +961,36 @@ app.post('/api/projects', uploadLimiter, authenticateToken, requireApproved, upl
         );
         
         const projectId = projectResult.rows[0].id;
-        
-        // 承認ルート（approval_routes）に基づいて審査者を自動設定
         const project = projectResult.rows[0];
-        await ensureProjectRoute(project);
+        
+        // 承認ルート（approval_routes）に基づいて審査者を自動設定（トランザクション内で実行）
+        // approval_routesテーブルは既存データなので、トランザクション外で読み取っても問題ない
+        const threshold = parseFloat(project.requested_amount || 0) < 100000000 ? '<100m' : '>=100m';
+        const routeResult = await client.query('SELECT * FROM approval_routes WHERE amount_threshold = $1', [threshold]);
+        const route = routeResult.rows[0] || null;
+        if (route) {
+          const reviewerApprovals = buildReviewerApprovals(project, route.reviewer_ids || []);
+          
+          // プロジェクトに承認ルート情報を設定
+          await client.query(
+            `UPDATE projects
+             SET final_approver_user_id = $1,
+                 reviewer_approvals = $2::jsonb,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = $3`,
+            [route.final_approver_user_id || null, reviewerApprovals, projectId]
+          );
+          
+          // project_reviewersテーブルに審査者を追加
+          if (route.reviewer_ids && route.reviewer_ids.length > 0) {
+            for (const reviewerId of route.reviewer_ids) {
+              await client.query(
+                'INSERT INTO project_reviewers (project_id, reviewer_id) VALUES ($1, $2) ON CONFLICT (project_id, reviewer_id) DO NOTHING',
+                [projectId, reviewerId]
+              );
+            }
+          }
+        }
         
         return projectResult;
       });
