@@ -919,80 +919,16 @@ const ReviewDashboard = () => {
               </div>
 
               {/* 承認フロー情報の表示 */}
-              {renderApprovalStatus(project)}
-
-              {/* 古いレビューボタン（承認フロー情報が表示されていない場合のみ） */}
-              {!approvalStatus[project.id] && (
+              {renderApprovalStatus(project) || (
                 <div className="mt-4 border-t pt-4">
-                  {selectedProject?.id === project.id ? (
-                    <>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        {t('review.comment', 'Review Comment')}
-                      </label>
-                      <textarea
-                        rows="3"
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border mb-4"
-                        value={reviewComment}
-                        onChange={(e) => setReviewComment(e.target.value)}
-                        placeholder={t('review.commentPlaceholder', 'Enter your review comment...')}
-                      />
-                      <div className="flex space-x-4">
-                        <button
-                          onClick={() => handleReview(project.id, 'approved')}
-                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-                        >
-                          {t('review.approve', 'Approve')}
-                        </button>
-                        <button
-                          onClick={() => handleReview(project.id, 'rejected')}
-                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-                        >
-                          {t('review.reject', 'Reject')}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedProject(null);
-                            setReviewComment('');
-                          }}
-                          className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded-md text-sm font-medium"
-                        >
-                          {t('review.cancel', 'Cancel')}
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex space-x-4">
-                      <button
-                        onClick={() => {
-                          setSelectedProject(project);
-                          setReviewComment('');
-                        }}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-                      >
-                        {t('review.review', 'Review')}
-                      </button>
-                      <button
-                        onClick={async () => {
-                          if (window.confirm(t('review.confirmApprove', 'Are you sure you want to approve this project?'))) {
-                            await handleReview(project.id, 'approved');
-                          }
-                        }}
-                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-                      >
-                        {t('review.approve', 'Approve')}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedProject(project);
-                          setReviewComment('');
-                        }}
-                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-                      >
-                        {t('review.reject', 'Reject')}
-                      </button>
-                    </div>
-                  )}
+                  <p className="text-sm text-gray-600 mb-2">
+                    {t('review.approval.loading', 'Loading approval status...')}
+                  </p>
                 </div>
+              )}
+
+              {/* 古いレビューボタンは非表示（承認フロー情報を使用） */}
+              {/* 注意: 古いボタンは使用しない。renderApprovalStatusで表示されるボタンのみを使用 */}
               )}
             </div>
           ))}
