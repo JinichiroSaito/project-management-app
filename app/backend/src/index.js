@@ -3356,6 +3356,49 @@ app.post('/api/debug/migrate-reviewers', authenticateToken, requireAdmin, async 
   }
 });
 
+// デバッグ用エンドポイント: 現在のユーザー情報とプロフィール紐付け状態を確認
+app.get('/api/debug/user-profile', authenticateToken, async (req, res) => {
+  try {
+    const email = req.user.email;
+    const uid = req.user.uid;
+    
+    // emailで検索
+    const emailResult = await db.query(
+      'SELECT id, email, firebase_uid, name, company, department, position, is_admin, is_approved FROM users WHERE email = $1',
+      [email]
+    );
+    
+    // firebase_uidで検索
+    const uidResult = await db.query(
+      'SELECT id, email, firebase_uid, name, company, department, position, is_admin, is_approved FROM users WHERE firebase_uid = $1',
+      [uid]
+    );
+    
+    // すべてのユーザーを取得（デバッグ用）
+    const allUsers = await db.query(
+      'SELECT id, email, firebase_uid, name, company, department, position, is_admin, is_approved FROM users ORDER BY id'
+    );
+    
+    res.json({
+      currentFirebaseUser: {
+        email: email,
+        uid: uid
+      },
+      foundByEmail: emailResult.rows.length > 0 ? emailResult.rows[0] : null,
+      foundByUid: uidResult.rows.length > 0 ? uidResult.rows[0] : null,
+      allUsers: allUsers.rows,
+      needsLinking: emailResult.rows.length === 0 && uidResult.rows.length > 0,
+      profileComplete: emailResult.rows.length > 0 ? 
+        (emailResult.rows[0].name && emailResult.rows[0].company && emailResult.rows[0].department && emailResult.rows[0].position) :
+        (uidResult.rows.length > 0 ? 
+          (uidResult.rows[0].name && uidResult.rows[0].company && uidResult.rows[0].department && uidResult.rows[0].position) :
+          false)
+    });
+  } catch (error) {
+    return handleError(res, error, 'Debug User Profile');
+  }
+});
+
 // デバッグ用エンドポイント: 審査待ちプロジェクトのデバッグ情報
 app.get('/api/debug/review-pending', authenticateToken, requireApproved, async (req, res) => {
   try {
