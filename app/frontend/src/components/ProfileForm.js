@@ -23,7 +23,14 @@ const ProfileForm = ({ onComplete }) => {
     setLoading(true);
 
     try {
-      await api.put('/api/users/profile', formData);
+      const response = await api.put('/api/users/profile', formData);
+      console.log('[ProfileForm] Profile updated successfully:', response.data);
+      
+      // ユーザー情報を再取得
+      await refreshUserInfo();
+      
+      // 少し待ってから再度ユーザー情報を確認
+      await new Promise(resolve => setTimeout(resolve, 500));
       await refreshUserInfo();
       
       // プロフィール送信成功メッセージを表示
@@ -37,6 +44,9 @@ const ProfileForm = ({ onComplete }) => {
       setTimeout(() => {
         if (onComplete) {
           onComplete();
+        } else {
+          // onCompleteが指定されていない場合は、ページをリロード
+          window.location.reload();
         }
       }, 2000);
     } catch (error) {
