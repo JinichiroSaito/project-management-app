@@ -38,6 +38,8 @@ const ReviewDashboard = () => {
   const [analysisProject, setAnalysisProject] = useState(null);
   const [approvalStatus, setApprovalStatus] = useState({});
   const [approvalLoading, setApprovalLoading] = useState({});
+  const [reviewerComments, setReviewerComments] = useState({}); // プロジェクトごとのコメント
+  const [showReviewerCommentInput, setShowReviewerCommentInput] = useState({}); // コメント入力の表示状態
   const [routes, setRoutes] = useState([]);
   const [routeModalOpen, setRouteModalOpen] = useState(false);
   const [routeSaving, setRouteSaving] = useState(false);
@@ -285,11 +287,39 @@ const ReviewDashboard = () => {
   const handleReviewerApprove = async (project) => {
     setApprovalLoading((prev) => ({ ...prev, [project.id]: true }));
     try {
-      await api.post(`/api/projects/${project.id}/reviewer-approve`);
+      await api.post(`/api/projects/${project.id}/reviewer-approve`, {
+        decision: 'approved'
+      });
       await refreshApprovalStatus(project.id);
+      setShowReviewerCommentInput((prev) => ({ ...prev, [project.id]: false }));
+      setReviewerComments((prev) => ({ ...prev, [project.id]: '' }));
     } catch (error) {
       console.error('Reviewer approve failed:', error);
       alert(error.response?.data?.error || 'Failed to approve as reviewer');
+    } finally {
+      setApprovalLoading((prev) => ({ ...prev, [project.id]: false }));
+    }
+  };
+
+  const handleReviewerReject = async (project) => {
+    const comment = reviewerComments[project.id] || '';
+    if (!comment.trim()) {
+      alert(t('review.commentRequired', 'Review comment is required when rejecting'));
+      return;
+    }
+
+    setApprovalLoading((prev) => ({ ...prev, [project.id]: true }));
+    try {
+      await api.post(`/api/projects/${project.id}/reviewer-approve`, {
+        decision: 'rejected',
+        review_comment: comment
+      });
+      await refreshApprovalStatus(project.id);
+      setShowReviewerCommentInput((prev) => ({ ...prev, [project.id]: false }));
+      setReviewerComments((prev) => ({ ...prev, [project.id]: '' }));
+    } catch (error) {
+      console.error('Reviewer reject failed:', error);
+      alert(error.response?.data?.error || 'Failed to reject as reviewer');
     } finally {
       setApprovalLoading((prev) => ({ ...prev, [project.id]: false }));
     }
@@ -376,19 +406,71 @@ const ReviewDashboard = () => {
         </div>
         <div className="flex flex-wrap gap-2">
           {isReviewer && !reviewerApproved && (
-            <button
-              disabled={approvalLoading[project.id]}
-              onClick={() => handleReviewerApprove(project)}
-              className={`px-2 py-1 rounded text-xs ${
-                approvalLoading[project.id]
-                  ? 'bg-gray-100 text-gray-500'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
-              }`}
-            >
-              {approvalLoading[project.id]
-                ? t('common.processing', 'Processing...')
-                : t('review.approval.reviewerApprove', 'Approve as reviewer')}
-            </button>
+            <>
+              {!showReviewerCommentInput[project.id] ? (
+                <>
+                  <button
+                    disabled={approvalLoading[project.id]}
+                    onClick={() => handleReviewerApprove(project)}
+                    className={`px-2 py-1 rounded text-xs ${
+                      approvalLoading[project.id]
+                        ? 'bg-gray-100 text-gray-500'
+                        : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                    }`}
+                  >
+                    {approvalLoading[project.id]
+                      ? t('common.processing', 'Processing...')
+                      : t('review.approval.reviewerApprove', 'Approve as reviewer')}
+                  </button>
+                  <button
+                    disabled={approvalLoading[project.id]}
+                    onClick={() => setShowReviewerCommentInput((prev) => ({ ...prev, [project.id]: true }))}
+                    className={`px-2 py-1 rounded text-xs ${
+                      approvalLoading[project.id]
+                        ? 'bg-gray-100 text-gray-500'
+                        : 'bg-red-600 text-white hover:bg-red-700'
+                    }`}
+                  >
+                    {t('review.approval.reviewerReject', 'Reject as reviewer')}
+                  </button>
+                </>
+              ) : (
+                <div className="w-full space-y-2">
+                  <textarea
+                    rows="3"
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
+                    value={reviewerComments[project.id] || ''}
+                    onChange={(e) => setReviewerComments((prev) => ({ ...prev, [project.id]: e.target.value }))}
+                    placeholder={t('review.commentPlaceholder', 'Enter your review comment...')}
+                  />
+                  <div className="flex space-x-2">
+                    <button
+                      disabled={approvalLoading[project.id]}
+                      onClick={() => handleReviewerReject(project)}
+                      className={`px-2 py-1 rounded text-xs ${
+                        approvalLoading[project.id]
+                          ? 'bg-gray-100 text-gray-500'
+                          : 'bg-red-600 text-white hover:bg-red-700'
+                      }`}
+                    >
+                      {approvalLoading[project.id]
+                        ? t('common.processing', 'Processing...')
+                        : t('review.approval.confirmReject', 'Confirm Reject')}
+                    </button>
+                    <button
+                      disabled={approvalLoading[project.id]}
+                      onClick={() => {
+                        setShowReviewerCommentInput((prev) => ({ ...prev, [project.id]: false }));
+                        setReviewerComments((prev) => ({ ...prev, [project.id]: '' }));
+                      }}
+                      className="px-2 py-1 rounded text-xs bg-gray-300 hover:bg-gray-400 text-gray-800"
+                    >
+                      {t('review.cancel', 'Cancel')}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
           {isFinalApprover && allApproved && project.application_status !== 'approved' && (
             <>

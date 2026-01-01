@@ -844,10 +844,24 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
   }
 });
 
-// Reviewer approval (parallel)
+// Reviewer approval/rejection (parallel)
 app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApproved, async (req, res) => {
   try {
     const { id } = req.params;
+    const { decision, review_comment } = req.body; // decision: 'approved' or 'rejected'
+    
+    // decisionが指定されていない場合は、デフォルトで'approved'とする（後方互換性のため）
+    const finalDecision = decision || 'approved';
+    
+    if (!['approved', 'rejected'].includes(finalDecision)) {
+      return res.status(400).json({ error: 'Decision must be either "approved" or "rejected"' });
+    }
+    
+    // 却下の場合、コメントが必須
+    if (finalDecision === 'rejected' && !review_comment?.trim()) {
+      return res.status(400).json({ error: 'Review comment is required when rejecting' });
+    }
+    
     const userEmail = req.user.email;
     const userResult = await db.query('SELECT id FROM users WHERE email = $1', [userEmail]);
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -868,17 +882,21 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     // 楽観的ロック：現在のreviewer_approvalsを取得してから更新
     const currentApprovals = project.reviewer_approvals || {};
     
-    // 既に承認済みの場合はエラーを返す
-    if (currentApprovals[userId] && currentApprovals[userId].status === 'approved') {
+    // 既に承認または却下済みの場合はエラーを返す
+    if (currentApprovals[userId] && currentApprovals[userId].status) {
       return res.status(400).json({ 
-        error: 'You have already approved this project',
+        error: `You have already ${currentApprovals[userId].status === 'approved' ? 'approved' : 'rejected'} this project`,
         reviewer_approvals: currentApprovals
       });
     }
     
-    // 承認を追加
+    // 承認または却下を追加
     const updatedApprovals = { ...currentApprovals };
-    updatedApprovals[userId] = { status: 'approved', updated_at: new Date().toISOString() };
+    updatedApprovals[userId] = { 
+      status: finalDecision === 'approved' ? 'approved' : 'rejected', 
+      review_comment: review_comment || null,
+      updated_at: new Date().toISOString() 
+    };
 
     // 楽観的ロック：reviewer_approvalsが変更されていないことを確認してから更新
     const updateResult = await db.query(
@@ -890,17 +908,17 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     );
 
     if (updateResult.rows.length === 0) {
-      // 競合が発生した場合（他の審査者が同時に承認した場合）
+      // 競合が発生した場合（他の審査者が同時に承認/却下した場合）
       // 最新の状態を取得して再試行
       const latestProject = await db.query('SELECT reviewer_approvals FROM projects WHERE id = $1', [id]);
       const latestApprovals = latestProject.rows[0]?.reviewer_approvals || {};
       
-      // 既に承認済みの場合は成功として扱う
-      if (latestApprovals[userId] && latestApprovals[userId].status === 'approved') {
+      // 既に承認/却下済みの場合は成功として扱う
+      if (latestApprovals[userId] && latestApprovals[userId].status) {
         return res.json({ 
           success: true, 
           reviewer_approvals: latestApprovals,
-          message: 'Already approved (concurrent update detected)'
+          message: `Already ${latestApprovals[userId].status} (concurrent update detected)`
         });
       }
       
@@ -912,7 +930,7 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
 
     res.json({ success: true, reviewer_approvals: updatedApprovals });
   } catch (error) {
-    return handleError(res, error, 'Reviewer Approve');
+    return handleError(res, error, 'Reviewer Approve/Reject');
   }
 });
 
