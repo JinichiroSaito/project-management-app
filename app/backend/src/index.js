@@ -819,6 +819,13 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
     }
 
     const projectWithRoute = await ensureProjectRoute(project);
+    
+    // ensureProjectRouteの後に、データベースから最新のreviewer_approvalsを再取得
+    const latestProjectResult = await db.query(
+      'SELECT reviewer_approvals FROM projects WHERE id = $1',
+      [id]
+    );
+    const latestReviewerApprovals = latestProjectResult.rows[0]?.reviewer_approvals || {};
 
     const reviewers = await db.query(
       `SELECT u.id, u.name, u.email
@@ -828,8 +835,8 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
       [id]
     );
 
-    // 審査状況の詳細を計算
-    const reviewerApprovals = projectWithRoute.reviewer_approvals || {};
+    // 審査状況の詳細を計算（最新のreviewer_approvalsを使用）
+    const reviewerApprovals = latestReviewerApprovals;
     console.log('[Approval Status] Reviewer approvals raw:', JSON.stringify(reviewerApprovals));
     console.log('[Approval Status] Reviewer approvals keys:', Object.keys(reviewerApprovals));
     console.log('[Approval Status] Reviewers:', reviewers.rows.map(r => ({ id: r.id, name: r.name })));
