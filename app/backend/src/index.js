@@ -761,10 +761,41 @@ app.post('/api/projects/:id/final-approve', authenticateToken, requireApproved, 
       return res.status(403).json({ error: 'You are not the final approver for this project' });
     }
 
+    // プロジェクトに割り当てられているすべての審査者を取得
+    const assignedReviewers = await db.query(
+      'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
+      [id]
+    );
+    
+    if (assignedReviewers.rows.length === 0) {
+      return res.status(400).json({ error: 'No reviewers assigned to this project' });
+    }
+    
+    const reviewerIds = assignedReviewers.rows.map(r => r.reviewer_id);
     const approvals = project.reviewer_approvals || {};
-    const allApproved = Object.values(approvals).every((a) => a && a.status === 'approved');
-    if (!allApproved) {
-      return res.status(400).json({ error: 'All reviewers must approve before final approval' });
+    
+    // すべての審査者が承認しているか確認
+    // 1. すべての審査者IDがapprovalsに含まれているか
+    // 2. すべての審査者のステータスが'approved'か
+    const allReviewersApproved = reviewerIds.every((reviewerId) => {
+      const approval = approvals[reviewerId];
+      return approval && approval.status === 'approved';
+    });
+    
+    if (!allReviewersApproved) {
+      const approvedCount = reviewerIds.filter((reviewerId) => {
+        const approval = approvals[reviewerId];
+        return approval && approval.status === 'approved';
+      }).length;
+      
+      return res.status(400).json({ 
+        error: 'All reviewers must approve before final approval',
+        details: {
+          total_reviewers: reviewerIds.length,
+          approved_count: approvedCount,
+          pending_count: reviewerIds.length - approvedCount
+        }
+      });
     }
 
     await db.query(
