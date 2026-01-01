@@ -17,6 +17,9 @@ const ApprovalStatusView = ({ projectId, onClose }) => {
       setLoading(true);
       setError('');
       const response = await api.get(`/api/projects/${projectId}/approval-status`);
+      console.log('[ApprovalStatusView] Approval status data:', response.data);
+      console.log('[ApprovalStatusView] Reviewer approvals:', response.data.reviewer_approvals);
+      console.log('[ApprovalStatusView] Reviewers:', response.data.reviewers);
       setApprovalStatus(response.data);
     } catch (error) {
       console.error('Error fetching approval status:', error);
@@ -143,6 +146,19 @@ const ApprovalStatusView = ({ projectId, onClose }) => {
                 const reviewerStatus = reviewer.status || reviewerApproval?.status || 'pending';
                 const isRejected = reviewerStatus === 'rejected';
                 const rejectionComment = reviewer.review_comment || reviewerApproval?.review_comment;
+                
+                // デバッグ用ログ
+                if (isRejected || reviewerApproval) {
+                  console.log('[ApprovalStatusView] Reviewer:', {
+                    id: reviewerId,
+                    name: reviewer.reviewer_name || reviewer.name,
+                    status: reviewerStatus,
+                    isRejected,
+                    reviewerApproval,
+                    rejectionComment,
+                    reviewer_approvals_keys: Object.keys(approvalStatus.reviewer_approvals || {})
+                  });
+                }
                 
                 return (
                   <div key={reviewer.id || reviewer.reviewer_id} className={`p-3 border rounded-lg ${isRejected ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}>
