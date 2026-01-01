@@ -2109,16 +2109,19 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
     }
     
     // プロジェクトの審査者を確認（複数の審査者に対応）
-    const project = await db.query(
-      'SELECT reviewer_id, application_status FROM projects WHERE id = $1',
+    const projectResult = await db.query(
+      'SELECT * FROM projects WHERE id = $1',
       [id]
     );
     
-    if (project.rows.length === 0) {
+    if (projectResult.rows.length === 0) {
       return res.status(404).json({ error: 'Project not found' });
     }
     
-    const projectData = project.rows[0];
+    const projectData = projectResult.rows[0];
+    
+    // プロジェクトの承認ルートを取得
+    const fullProject = await ensureProjectRoute(projectData);
     
     // project_reviewersテーブルから審査者を確認
     const projectReviewers = await db.query(
@@ -2154,30 +2157,63 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
       return res.status(400).json({ error: 'Project application must be submitted before review' });
     }
     
-    // 審査を実行
-    const result = await db.query(
-      `UPDATE projects 
-       SET application_status = $1, 
-           review_comment = $2,
-           reviewed_at = CURRENT_TIMESTAMP,
-           reviewed_by = $3,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $4 RETURNING *`,
-      [decision, review_comment || null, currentUser.rows[0].id, id]
-    );
-    
-    // 承認された場合、ステータスをactiveに変更
+    // 承認の場合：reviewer_approvalsを更新（並列承認フローに対応）
     if (decision === 'approved') {
+      const currentApprovals = fullProject.reviewer_approvals || {};
+      const updatedApprovals = { ...currentApprovals };
+      updatedApprovals[userId] = { status: 'approved', updated_at: new Date().toISOString() };
+      
+      // reviewer_approvalsを更新（application_statusは変更しない）
       await db.query(
-        'UPDATE projects SET status = $1 WHERE id = $2',
-        ['active', id]
+        `UPDATE projects 
+         SET reviewer_approvals = $1::jsonb,
+             review_comment = $2,
+             reviewed_at = CURRENT_TIMESTAMP,
+             reviewed_by = $3,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $4`,
+        [updatedApprovals, review_comment || null, currentUser.rows[0].id, id]
       );
+      
+      // すべての審査者が承認したか確認
+      const allReviewers = await db.query(
+        'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
+        [id]
+      );
+      const totalReviewers = allReviewers.rows.length;
+      const approvedCount = Object.values(updatedApprovals).filter(a => a?.status === 'approved').length;
+      const allReviewersApproved = totalReviewers > 0 && approvedCount === totalReviewers;
+      
+      // すべての審査者が承認した場合でも、application_statusは変更しない
+      // 最終承認者が最終承認を行うまで、application_statusは'submitted'のまま
+      
+      const updatedProject = await db.query('SELECT * FROM projects WHERE id = $1', [id]);
+      res.json({
+        project: updatedProject.rows[0],
+        message: 'Reviewer approval recorded successfully',
+        all_reviewers_approved: allReviewersApproved,
+        note: allReviewersApproved && fullProject.final_approver_user_id 
+          ? 'All reviewers have approved. Waiting for final approval.' 
+          : 'Reviewer approval recorded.'
+      });
+    } else {
+      // 却下の場合：application_statusを'rejected'に変更
+      const result = await db.query(
+        `UPDATE projects 
+         SET application_status = $1, 
+             review_comment = $2,
+             reviewed_at = CURRENT_TIMESTAMP,
+             reviewed_by = $3,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $4 RETURNING *`,
+        ['rejected', review_comment || null, currentUser.rows[0].id, id]
+      );
+      
+      res.json({
+        project: result.rows[0],
+        message: 'Project application rejected successfully'
+      });
     }
-    
-    res.json({
-      project: result.rows[0],
-      message: `Project application ${decision} successfully`
-    });
   } catch (error) {
     return handleError(res, error, 'Review Project Application');
   }
