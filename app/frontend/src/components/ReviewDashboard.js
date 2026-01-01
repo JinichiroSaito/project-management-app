@@ -4,6 +4,20 @@ import { useLanguage } from '../LanguageContext';
 import ProjectKpiReports from './ProjectKpiReports';
 import ProjectBudgetManagement from './ProjectBudgetManagement';
 
+const SECTION_DEFS = [
+  { number: 1, key: '解決すべき問題', fallback: 'Problem' },
+  { number: 2, key: 'ターゲット顧客は誰か', fallback: 'Target customer' },
+  { number: 3, key: '提供価値は何か', fallback: 'Value proposition' },
+  { number: 4, key: 'プロトタイプは何か', fallback: 'Prototype' },
+  { number: 5, key: '想定ビジネスモデルは何か', fallback: 'Business model' },
+  { number: 6, key: '市場規模はどれくらいか', fallback: 'Market size' },
+  { number: 7, key: '競合はどこか', fallback: 'Competitors' },
+  { number: 8, key: 'MVPの検証方法と目標数値は何か', fallback: 'MVP verification' },
+  { number: 9, key: 'MVP検証のロードマップは何か', fallback: 'MVP roadmap' },
+  { number: 10, key: 'いくらかかるのか', fallback: 'Budget' },
+  { number: 11, key: '実施におけるリスクは何か', fallback: 'Risks' }
+];
+
 const ReviewDashboard = () => {
   const [projects, setProjects] = useState([]);
   const [approvedProjects, setApprovedProjects] = useState([]);
@@ -128,6 +142,33 @@ const ReviewDashboard = () => {
     );
   };
 
+  const buildSectionList = (missingSections) => {
+    const list = missingSections?.missing_sections || [];
+    return SECTION_DEFS.map((def) => {
+      const found = list.find((s) => `${s.section_number}` === `${def.number}`);
+      const statusType = found
+        ? found.is_missing
+          ? 'missing'
+          : found.is_incomplete
+            ? 'incomplete'
+            : 'ok'
+        : 'ok';
+      return {
+        number: def.number,
+        name: t(`projectApplication.sectionName.${def.key}`, def.fallback),
+        statusType,
+        statusLabel:
+          statusType === 'missing'
+            ? t('review.analysis.status.missing', 'Missing')
+            : statusType === 'incomplete'
+              ? t('review.analysis.status.incomplete', 'Incomplete')
+              : t('review.analysis.status.ok', 'OK'),
+        reason: found?.reason,
+        checkpoints: Array.isArray(found?.checkpoints) ? found.checkpoints : []
+      };
+    });
+  };
+
   const recheckAnalysis = async (project) => {
     if (!project?.id) return;
     setRecheckLoading((prev) => ({ ...prev, [project.id]: true }));
@@ -241,48 +282,51 @@ const ReviewDashboard = () => {
             </div>
           )}
 
-          {missingSections.missing_sections && missingSections.missing_sections.length > 0 && (
-            <div className="mb-4">
-              <h4 className="text-sm font-semibold text-gray-800 mb-2">
-                {t('projectApplication.analysis.missingSections', 'Missing Sections')} ({missingSections.missing_sections.length})
-              </h4>
-              <div className="space-y-2 text-sm text-gray-800">
-                {missingSections.missing_sections.map((section, idx) => (
-                  <div key={idx} className="p-3 rounded border border-yellow-100 bg-yellow-50">
-                    <div className="flex items-center space-x-2">
-                      <div className="font-medium text-yellow-900">
-                        {section.section_number}. {t(`projectApplication.sectionName.${section.section_name}`, section.section_name)}
-                      </div>
-                      <div className="flex space-x-1">
-                        {section.is_missing && renderStatusBadge(t('review.analysis.status.missing', 'Missing'), 'missing')}
-                        {section.is_incomplete && renderStatusBadge(t('review.analysis.status.incomplete', 'Incomplete'), 'incomplete')}
-                        {!section.is_missing && !section.is_incomplete && renderStatusBadge(t('review.analysis.status.ok', 'OK'), 'ok')}
-                      </div>
+          <div className="mb-4">
+            <h4 className="text-sm font-semibold text-gray-800 mb-2">
+              {t('projectApplication.analysis.missingSections', 'Missing Sections')}
+            </h4>
+            <div className="space-y-2 text-sm text-gray-800">
+              {buildSectionList(missingSections).map((section, idx) => (
+                <div key={idx} className="p-3 rounded border border-gray-200 bg-white">
+                  <div className="flex items-center space-x-2">
+                    <div className="font-medium text-gray-900">
+                      {section.number}. {section.name}
                     </div>
-                    {section.reason && (
-                      <p className="text-xs text-gray-700 mt-1">{section.reason}</p>
-                    )}
-                    {section.checkpoints && Array.isArray(section.checkpoints) && section.checkpoints.length > 0 && (
-                      <div className="mt-2 space-y-1">
-                        <div className="text-xs text-gray-600 font-semibold">
-                          {t('review.analysis.checkpoints', 'Checkpoints')}
-                        </div>
-                        {section.checkpoints.map((cp, cpIdx) => (
-                          <div key={cpIdx} className="text-xs bg-white border border-gray-200 rounded px-2 py-1">
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-800">{cp.point}</span>
-                              {cp.status && renderStatusBadge(cp.status, cp.status === 'ok' ? 'ok' : cp.status === 'missing' ? 'missing' : 'incomplete')}
-                            </div>
-                            {cp.note && <div className="text-gray-600 mt-0.5">{cp.note}</div>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <div className="flex space-x-1">
+                      {renderStatusBadge(section.statusLabel, section.statusType)}
+                    </div>
                   </div>
-                ))}
-              </div>
+                  {section.reason && (
+                    <p className="text-xs text-gray-700 mt-1">{section.reason}</p>
+                  )}
+                  {section.checkpoints && section.checkpoints.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <div className="text-xs text-gray-600 font-semibold">
+                        {t('review.analysis.checkpoints', 'Checkpoints')}
+                      </div>
+                      {section.checkpoints.map((cp, cpIdx) => (
+                        <div key={cpIdx} className="text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-800">{cp.point}</span>
+                            {cp.status && renderStatusBadge(
+                              cp.status === 'ok'
+                                ? t('review.analysis.status.ok', 'OK')
+                                : cp.status === 'missing'
+                                  ? t('review.analysis.status.missing', 'Missing')
+                                  : t('review.analysis.status.incomplete', 'Incomplete'),
+                              cp.status === 'ok' ? 'ok' : cp.status === 'missing' ? 'missing' : 'incomplete'
+                            )}
+                          </div>
+                          {cp.note && <div className="text-gray-600 mt-0.5">{cp.note}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
-          )}
+          </div>
 
           {missingSections.critical_issues && missingSections.critical_issues.length > 0 && (
             <div className="mb-4">
@@ -622,25 +666,28 @@ const ReviewDashboard = () => {
                     </div>
                   )}
                   
-                  {missingSections.missing_sections && missingSections.missing_sections.length > 0 && (
-                    <div className="mb-3 p-2 bg-yellow-50 rounded border border-yellow-200">
-                      <h5 className="text-xs font-medium text-yellow-900 mb-1">
-                        {t('projectApplication.analysis.missingSections', 'Missing Sections')}: {missingSections.missing_sections.length}
-                      </h5>
-                      <ul className="text-xs text-yellow-800 space-y-1">
-                        {missingSections.missing_sections.slice(0, expandedAnalysis[project.id] ? undefined : 3).map((section, index) => (
+                  <div className="mb-3 p-2 bg-yellow-50 rounded border border-yellow-200">
+                    <h5 className="text-xs font-medium text-yellow-900 mb-1">
+                      {t('projectApplication.analysis.missingSections', 'Missing Sections')}
+                    </h5>
+                    <ul className="text-xs text-yellow-800 space-y-1">
+                      {buildSectionList(missingSections)
+                        .slice(0, expandedAnalysis[project.id] ? undefined : 3)
+                        .map((section, index) => (
                           <li key={index}>
-                            {section.section_number}. {t(`projectApplication.sectionName.${section.section_name}`, section.section_name)}
-                            {section.is_missing && <span className="text-red-600 ml-1">({t('projectApplication.analysis.missing', 'Missing')})</span>}
-                            {section.is_incomplete && <span className="text-orange-600 ml-1">({t('projectApplication.analysis.incomplete', 'Incomplete')})</span>}
+                            {section.number}. {section.name}
+                            {section.statusType === 'missing' && <span className="text-red-600 ml-1">({t('projectApplication.analysis.missing', 'Missing')})</span>}
+                            {section.statusType === 'incomplete' && <span className="text-orange-600 ml-1">({t('projectApplication.analysis.incomplete', 'Incomplete')})</span>}
+                            {section.statusType === 'ok' && <span className="text-green-600 ml-1">({t('review.analysis.status.ok', 'OK')})</span>}
                           </li>
                         ))}
-                        {!expandedAnalysis[project.id] && missingSections.missing_sections.length > 3 && (
-                          <li className="text-gray-600">{t('projectApplication.analysis.others', '...and {count} more', { count: missingSections.missing_sections.length - 3 })}</li>
-                        )}
-                      </ul>
-                    </div>
-                  )}
+                      {!expandedAnalysis[project.id] && buildSectionList(missingSections).length > 3 && (
+                        <li className="text-gray-600">
+                          {t('projectApplication.analysis.others', '...and {count} more', { count: buildSectionList(missingSections).length - 3 })}
+                        </li>
+                      )}
+                    </ul>
+                  </div>
                   
                   {missingSections.critical_issues && missingSections.critical_issues.length > 0 && (
                     <div className="mb-3 p-2 bg-red-50 rounded border border-red-200">
