@@ -66,6 +66,10 @@ async function ensureProjectRoute(project) {
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// Cloud Runやプロキシ経由のリクエストを信頼する設定
+// これにより、express-rate-limitがX-Forwarded-Forヘッダーを正しく処理できる
+app.set('trust proxy', true);
+
 // Firebase初期化
 initializeFirebase();
 

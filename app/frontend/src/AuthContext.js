@@ -45,17 +45,41 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
+    let isMounted = true;
+    
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!isMounted) return;
+      
       setUser(firebaseUser);
       if (firebaseUser) {
-        await fetchUserInfo(firebaseUser);
+        try {
+          await fetchUserInfo(firebaseUser);
+        } catch (error) {
+          console.error('[AuthContext] Error fetching user info:', error);
+          // エラーが発生してもローディングを解除
+        }
       } else {
         setUserInfo(null);
       }
-      setLoading(false);
+      
+      if (isMounted) {
+        setLoading(false);
+      }
     });
 
-    return unsubscribe;
+    // タイムアウト設定（10秒後に強制的にローディングを解除）
+    const timeoutId = setTimeout(() => {
+      if (isMounted) {
+        console.warn('[AuthContext] Auth state change timeout, setting loading to false');
+        setLoading(false);
+      }
+    }, 10000);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+      unsubscribe();
+    };
   }, []);
 
   const login = async (email, password) => {
@@ -132,7 +156,16 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {loading ? (
+        <div className="flex justify-center items-center h-screen">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">読み込み中...</p>
+          </div>
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 };
