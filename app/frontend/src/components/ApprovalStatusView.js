@@ -16,6 +16,17 @@ const ApprovalStatusView = ({ projectId, onClose }) => {
     try {
       setLoading(true);
       setError('');
+      
+      // デバッグエンドポイントでデータベースの実際の状態を確認
+      try {
+        const debugResponse = await api.get(`/api/debug/project/${projectId}/reviewer-approvals`);
+        console.log('[ApprovalStatusView] DEBUG - Raw database reviewer_approvals:', debugResponse.data);
+        console.log('[ApprovalStatusView] DEBUG - Keys:', Object.keys(debugResponse.data.reviewer_approvals || {}));
+        console.log('[ApprovalStatusView] DEBUG - Values:', Object.entries(debugResponse.data.reviewer_approvals || {}).map(([key, value]) => ({ key, value, keyType: typeof key })));
+      } catch (debugError) {
+        console.warn('[ApprovalStatusView] Debug endpoint not available:', debugError);
+      }
+      
       const response = await api.get(`/api/projects/${projectId}/approval-status`);
       console.log('[ApprovalStatusView] Approval status data:', response.data);
       console.log('[ApprovalStatusView] Reviewer approvals:', response.data.reviewer_approvals);
