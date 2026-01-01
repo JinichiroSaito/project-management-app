@@ -20,9 +20,18 @@ const ApprovalStatusView = ({ projectId, onClose }) => {
       // デバッグエンドポイントでデータベースの実際の状態を確認
       try {
         const debugResponse = await api.get(`/api/debug/project/${projectId}/reviewer-approvals`);
-        console.log('[ApprovalStatusView] DEBUG - Raw database reviewer_approvals:', debugResponse.data);
-        console.log('[ApprovalStatusView] DEBUG - Keys:', Object.keys(debugResponse.data.reviewer_approvals || {}));
-        console.log('[ApprovalStatusView] DEBUG - Values:', Object.entries(debugResponse.data.reviewer_approvals || {}).map(([key, value]) => ({ key, value, keyType: typeof key })));
+        console.log('[ApprovalStatusView] DEBUG - Debug endpoint response:', debugResponse.data);
+        const reviewerApprovals = debugResponse.data.reviewer_approvals || {};
+        console.log('[ApprovalStatusView] DEBUG - Keys:', Object.keys(reviewerApprovals));
+        console.log('[ApprovalStatusView] DEBUG - Values:', Object.entries(reviewerApprovals).map(([key, value]) => ({ 
+          key, 
+          value, 
+          keyType: typeof key,
+          valueType: typeof value,
+          hasStatus: value && typeof value === 'object' && 'status' in value,
+          status: value && typeof value === 'object' ? value.status : null,
+          reviewComment: value && typeof value === 'object' ? value.review_comment : null
+        })));
       } catch (debugError) {
         console.warn('[ApprovalStatusView] Debug endpoint not available:', debugError);
       }
