@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { useLanguage } from '../LanguageContext';
+import { useAuth } from '../AuthContext';
 import ProjectKpiReports from './ProjectKpiReports';
 import ProjectBudgetManagement from './ProjectBudgetManagement';
 
@@ -28,16 +29,25 @@ const ReviewDashboard = () => {
   const [reviewComment, setReviewComment] = useState('');
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'approved'
   const { t, language } = useLanguage();
+  const { userInfo } = useAuth();
 
   const [debugInfo, setDebugInfo] = useState(null);
   const [showDebug, setShowDebug] = useState(false);
   const [expandedAnalysis, setExpandedAnalysis] = useState({});
   const [recheckLoading, setRecheckLoading] = useState({});
   const [analysisProject, setAnalysisProject] = useState(null);
+  const [approvalStatus, setApprovalStatus] = useState({});
+  const [approvalLoading, setApprovalLoading] = useState({});
+  const [routes, setRoutes] = useState([]);
+  const [routeModalOpen, setRouteModalOpen] = useState(false);
+  const [routeSaving, setRouteSaving] = useState(false);
 
   useEffect(() => {
     fetchPendingReviews();
     fetchApprovedProjects();
+    if (userInfo?.is_admin) {
+      fetchRoutes();
+    }
   }, []);
 
   const fetchDebugInfo = async () => {
@@ -49,6 +59,24 @@ const ReviewDashboard = () => {
     }
   };
 
+  const saveRoute = async (amountThreshold, reviewerIds, finalApproverUserId) => {
+    setRouteSaving(true);
+    try {
+      await api.put('/api/admin/approval-routes', {
+        amount_threshold: amountThreshold,
+        reviewer_ids: reviewerIds,
+        final_approver_user_id: finalApproverUserId || null
+      });
+      await fetchRoutes();
+      setRouteModalOpen(false);
+    } catch (error) {
+      console.error('Error saving route:', error);
+      alert(error.response?.data?.error || 'Failed to save route');
+    } finally {
+      setRouteSaving(false);
+    }
+  };
+
   const fetchPendingReviews = async () => {
     try {
       setLoading(true);
@@ -56,6 +84,21 @@ const ReviewDashboard = () => {
       const response = await api.get('/api/projects/review/pending');
       console.log('[ReviewDashboard] Received response:', response.data);
       setProjects(response.data.projects || []);
+
+      // fetch approval status for each pending project
+      const statuses = {};
+      await Promise.all(
+        (response.data.projects || []).map(async (p) => {
+          try {
+            const st = await api.get(`/api/projects/${p.id}/approval-status`);
+            statuses[p.id] = st.data;
+          } catch (err) {
+            console.warn('approval status fetch failed for project', p.id, err.message);
+          }
+        })
+      );
+      setApprovalStatus(statuses);
+
       setError('');
       if ((response.data.projects || []).length === 0) {
         console.warn('[ReviewDashboard] No pending projects found');
@@ -80,6 +123,15 @@ const ReviewDashboard = () => {
       setApprovedProjects(response.data.projects);
     } catch (error) {
       console.error('Error fetching approved projects:', error);
+    }
+  };
+
+  const fetchRoutes = async () => {
+    try {
+      const res = await api.get('/api/admin/approval-routes');
+      setRoutes(res.data.routes || []);
+    } catch (error) {
+      console.error('Error fetching approval routes:', error);
     }
   };
 
@@ -213,6 +265,116 @@ const ReviewDashboard = () => {
     } finally {
       setRecheckLoading((prev) => ({ ...prev, [project.id]: false }));
     }
+  };
+
+  const refreshApprovalStatus = async (projectId) => {
+    try {
+      const st = await api.get(`/api/projects/${projectId}/approval-status`);
+      setApprovalStatus((prev) => ({ ...prev, [projectId]: st.data }));
+    } catch (err) {
+      console.warn('approval status refresh failed', projectId, err.message);
+    }
+  };
+
+  const handleReviewerApprove = async (project) => {
+    setApprovalLoading((prev) => ({ ...prev, [project.id]: true }));
+    try {
+      await api.post(`/api/projects/${project.id}/reviewer-approve`);
+      await refreshApprovalStatus(project.id);
+    } catch (error) {
+      console.error('Reviewer approve failed:', error);
+      alert(error.response?.data?.error || 'Failed to approve as reviewer');
+    } finally {
+      setApprovalLoading((prev) => ({ ...prev, [project.id]: false }));
+    }
+  };
+
+  const handleFinalApprove = async (project) => {
+    setApprovalLoading((prev) => ({ ...prev, [project.id]: true }));
+    try {
+      await api.post(`/api/projects/${project.id}/final-approve`);
+      await refreshApprovalStatus(project.id);
+      // refresh lists to move to approved tab
+      fetchPendingReviews();
+      fetchApprovedProjects();
+    } catch (error) {
+      console.error('Final approve failed:', error);
+      alert(error.response?.data?.error || 'Failed to approve as final approver');
+    } finally {
+      setApprovalLoading((prev) => ({ ...prev, [project.id]: false }));
+    }
+  };
+
+  const renderApprovalStatus = (project) => {
+    const status = approvalStatus[project.id];
+    if (!status) return null;
+    const approvals = status.reviewer_approvals || {};
+    const reviewers = status.reviewers || [];
+    const allApproved = reviewers.every((r) => approvals[r.id]?.status === 'approved');
+    const isReviewer = reviewers.some((r) => r.id === userInfo?.id);
+    const reviewerApproved = approvals[userInfo?.id]?.status === 'approved';
+    const isFinalApprover = status.final_approver_user_id === userInfo?.id;
+    return (
+      <div className="mt-2 text-xs text-gray-700 space-y-1">
+        <div className="font-semibold">{t('review.approval.flow', 'Approval Flow')}</div>
+        <div>
+          <span className="font-medium">{t('review.approval.reviewers', 'Reviewers')}:</span>{' '}
+          {reviewers.map((r) => (
+            <span key={r.id} className="inline-flex items-center mr-2">
+              {r.name || r.email}
+              <span className="ml-1">
+                {approvals[r.id]?.status === 'approved'
+                  ? renderStatusBadge(t('review.approval.approved', 'Approved'), 'ok')
+                  : renderStatusBadge(t('review.approval.pending', 'Pending'), 'default')}
+              </span>
+            </span>
+          ))}
+        </div>
+        <div>
+          <span className="font-medium">{t('review.approval.final', 'Final Approver')}:</span>{' '}
+          {status.final_approver_name || status.final_approver_email || status.final_approver_user_id || '-'}{' '}
+          <span className="ml-1">
+            {project.application_status === 'approved'
+              ? renderStatusBadge(t('review.approval.approved', 'Approved'), 'ok')
+              : allApproved
+                ? renderStatusBadge(t('review.approval.awaitingFinal', 'Awaiting final'), 'incomplete')
+                : renderStatusBadge(t('review.approval.pending', 'Pending'), 'default')}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {isReviewer && !reviewerApproved && (
+            <button
+              disabled={approvalLoading[project.id]}
+              onClick={() => handleReviewerApprove(project)}
+              className={`px-2 py-1 rounded text-xs ${
+                approvalLoading[project.id]
+                  ? 'bg-gray-100 text-gray-500'
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
+              }`}
+            >
+              {approvalLoading[project.id]
+                ? t('common.processing', 'Processing...')
+                : t('review.approval.reviewerApprove', 'Approve as reviewer')}
+            </button>
+          )}
+          {isFinalApprover && allApproved && project.application_status !== 'approved' && (
+            <button
+              disabled={approvalLoading[project.id]}
+              onClick={() => handleFinalApprove(project)}
+              className={`px-2 py-1 rounded text-xs ${
+                approvalLoading[project.id]
+                  ? 'bg-gray-100 text-gray-500'
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              }`}
+            >
+              {approvalLoading[project.id]
+                ? t('common.processing', 'Processing...')
+                : t('review.approval.finalApprove', 'Final approve')}
+            </button>
+          )}
+        </div>
+      </div>
+    );
   };
 
   const renderAnalysisModal = () => {

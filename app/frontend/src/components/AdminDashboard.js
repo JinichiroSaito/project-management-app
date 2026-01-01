@@ -11,6 +11,11 @@ const AdminDashboard = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [editingUser, setEditingUser] = useState(null);
   const [editFormData, setEditFormData] = useState({});
+  const [approvalRoutes, setApprovalRoutes] = useState([
+    { amount_threshold: '<100m', reviewer_ids: [], final_approver_user_id: null },
+    { amount_threshold: '>=100m', reviewer_ids: [], final_approver_user_id: null }
+  ]);
+  const [savingRoute, setSavingRoute] = useState(false);
   const { t } = useLanguage();
 
   useEffect(() => {
@@ -19,6 +24,7 @@ const AdminDashboard = () => {
     } else {
       fetchAllUsers();
     }
+    fetchApprovalRoutes();
     
     // 30秒ごとにデータを更新（ポーリング、ローディング表示なし）
     const interval = setInterval(() => {
@@ -27,6 +33,7 @@ const AdminDashboard = () => {
       } else {
         fetchAllUsers(false);
       }
+      fetchApprovalRoutes(false);
     }, 30000);
     
     return () => clearInterval(interval);
@@ -65,6 +72,50 @@ const AdminDashboard = () => {
       if (showLoading) {
         setLoading(false);
       }
+    }
+  };
+
+  const fetchApprovalRoutes = async (showLoading = true) => {
+    try {
+      const response = await api.get('/api/admin/approval-routes');
+      if (response.data.routes) {
+        setApprovalRoutes((prev) =>
+          ['<100m', '>=100m'].map((thr) => response.data.routes.find((r) => r.amount_threshold === thr) || { amount_threshold: thr, reviewer_ids: [], final_approver_user_id: null })
+        );
+      }
+      if (showLoading) setLoading(false);
+    } catch (error) {
+      console.error('Error fetching approval routes:', error);
+      if (showLoading) setLoading(false);
+    }
+  };
+
+  const handleRouteChange = (threshold, key, value) => {
+    setApprovalRoutes((prev) =>
+      prev.map((r) =>
+        r.amount_threshold === threshold
+          ? { ...r, [key]: value }
+          : r
+      )
+    );
+  };
+
+  const handleSaveRoute = async (route) => {
+    try {
+      setSavingRoute(true);
+      await api.put('/api/admin/approval-routes', {
+        amount_threshold: route.amount_threshold,
+        reviewer_ids: route.reviewer_ids,
+        final_approver_user_id: route.final_approver_user_id
+      });
+      setSuccessMessage(t('admin.approvalRouteSaved', 'Approval route saved'));
+      setTimeout(() => setSuccessMessage(''), 3000);
+      fetchApprovalRoutes(false);
+    } catch (error) {
+      console.error('Error saving approval route:', error);
+      setError(error.response?.data?.error || 'Failed to save approval route');
+    } finally {
+      setSavingRoute(false);
     }
   };
 
@@ -158,6 +209,73 @@ const AdminDashboard = () => {
         <p className="mt-2 text-sm text-gray-600">
           {t('admin.subtitle', 'Approve pending user registrations from the list below')}
         </p>
+      </div>
+
+      {/* Approval routes settings */}
+      <div className="mb-8">
+        <h3 className="text-lg font-semibold text-gray-900 mb-3">{t('admin.approvalRoutes.title', 'Approval Routes')}</h3>
+        <p className="text-sm text-gray-600 mb-4">{t('admin.approvalRoutes.desc', 'Set reviewers and final approver by amount threshold')}</p>
+        <div className="grid md:grid-cols-2 gap-4">
+          {approvalRoutes.map((route) => (
+            <div key={route.amount_threshold} className="border rounded-lg p-4 bg-white shadow-sm">
+              <div className="flex justify-between items-center mb-3">
+                <div>
+                  <p className="text-sm text-gray-600">{t('admin.approvalRoutes.threshold', 'Amount threshold')}</p>
+                  <p className="text-lg font-bold text-gray-900">{route.amount_threshold}</p>
+                </div>
+                <button
+                  onClick={() => handleSaveRoute(route)}
+                  disabled={savingRoute}
+                  className={`px-3 py-1.5 text-sm rounded-md ${savingRoute ? 'bg-gray-100 text-gray-500' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+                >
+                  {savingRoute ? t('common.saving', 'Saving...') : t('common.save', 'Save')}
+                </button>
+              </div>
+
+              <div className="mb-3">
+                <p className="text-sm font-medium text-gray-700 mb-1">{t('admin.approvalRoutes.reviewers', 'Reviewers')}</p>
+                <div className="space-y-1 max-h-48 overflow-auto border rounded p-2">
+                  {allUsers
+                    .filter((u) => u.position === 'reviewer')
+                    .map((user) => {
+                      const checked = route.reviewer_ids?.includes(user.id);
+                      return (
+                        <label key={user.id} className="flex items-center space-x-2 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const next = new Set(route.reviewer_ids || []);
+                              if (e.target.checked) next.add(user.id);
+                              else next.delete(user.id);
+                              handleRouteChange(route.amount_threshold, 'reviewer_ids', Array.from(next));
+                            }}
+                          />
+                          <span>{user.name || user.email}</span>
+                        </label>
+                      );
+                    })}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-1">{t('admin.approvalRoutes.finalApprover', 'Final approver')}</p>
+                <select
+                  value={route.final_approver_user_id || ''}
+                  onChange={(e) => handleRouteChange(route.amount_threshold, 'final_approver_user_id', e.target.value ? parseInt(e.target.value, 10) : null)}
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm text-sm"
+                >
+                  <option value="">{t('admin.approvalRoutes.selectFinal', 'Select user')}</option>
+                  {allUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name || u.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* タブ切り替えと更新ボタン */}

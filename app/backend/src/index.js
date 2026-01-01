@@ -14,6 +14,55 @@ const upload = require('./middleware/upload');
 const { uploadFile, deleteFile } = require('./utils/storage');
 const { extractTextFromFile, checkMissingSections, businessAdvisorChat } = require('./utils/gemini');
 
+// Approval route helpers
+const APPROVAL_THRESHOLD = {
+  UNDER_100M: '<100m',
+  OVER_EQ_100M: '>=100m'
+};
+
+async function getApprovalRouteByAmount(amount) {
+  const threshold = amount < 100000000 ? APPROVAL_THRESHOLD.UNDER_100M : APPROVAL_THRESHOLD.OVER_EQ_100M;
+  const route = await db.query('SELECT * FROM approval_routes WHERE amount_threshold = $1', [threshold]);
+  return route.rows[0] || null;
+}
+
+function buildReviewerApprovals(project, reviewers) {
+  const current = project.reviewer_approvals || {};
+  const base = {};
+  reviewers.forEach((rid) => {
+    base[rid] = current[rid] || { status: 'pending', updated_at: null };
+  });
+  return base;
+}
+
+async function ensureProjectRoute(project) {
+  if (project.final_approver_user_id && project.reviewer_approvals) return project;
+  const route = await getApprovalRouteByAmount(parseFloat(project.requested_amount || 0));
+  if (!route) return project;
+
+  const reviewerApprovals = buildReviewerApprovals(project, route.reviewer_ids || []);
+  await db.query(
+    `UPDATE projects
+     SET final_approver_user_id = $1,
+         reviewer_approvals = $2::jsonb,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $3`,
+    [route.final_approver_user_id || null, reviewerApprovals, project.id]
+  );
+
+  if (route.reviewer_ids && route.reviewer_ids.length > 0) {
+    await db.query('DELETE FROM project_reviewers WHERE project_id = $1', [project.id]);
+    const values = route.reviewer_ids.map((rid) => `(${project.id}, ${rid})`).join(', ');
+    await db.query(`INSERT INTO project_reviewers (project_id, reviewer_id) VALUES ${values}`);
+  }
+
+  return {
+    ...project,
+    final_approver_user_id: route.final_approver_user_id,
+    reviewer_approvals: reviewerApprovals
+  };
+}
+
 const app = express();
 const PORT = process.env.PORT || 8080;
 
@@ -545,6 +594,111 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
     res.json({ projects: result.rows });
   } catch (error) {
     return handleError(res, error, 'Fetch Pending Review Projects');
+  }
+});
+
+// Approval status (reviewers + final approver)
+app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const projectResult = await db.query(
+      `SELECT p.*, u_final.name AS final_approver_name, u_final.email AS final_approver_email
+       FROM projects p
+       LEFT JOIN users u_final ON u_final.id = p.final_approver_user_id
+       WHERE p.id = $1`,
+      [id]
+    );
+    if (projectResult.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+
+    const project = await ensureProjectRoute(projectResult.rows[0]);
+
+    const reviewers = await db.query(
+      `SELECT u.id, u.name, u.email
+       FROM project_reviewers pr
+       JOIN users u ON u.id = pr.reviewer_id
+       WHERE pr.project_id = $1`,
+      [id]
+    );
+
+    res.json({
+      project_id: project.id,
+      final_approver_user_id: project.final_approver_user_id,
+      final_approver_name: project.final_approver_name,
+      final_approver_email: project.final_approver_email,
+      reviewer_approvals: project.reviewer_approvals || {},
+      reviewers: reviewers.rows
+    });
+  } catch (error) {
+    return handleError(res, error, 'Get Approval Status');
+  }
+});
+
+// Reviewer approval (parallel)
+app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userEmail = req.user.email;
+    const userResult = await db.query('SELECT id FROM users WHERE email = $1', [userEmail]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = userResult.rows[0].id;
+
+    const projectResult = await db.query('SELECT * FROM projects WHERE id = $1', [id]);
+    if (projectResult.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    const project = await ensureProjectRoute(projectResult.rows[0]);
+
+    const assignedReviewers = await db.query(
+      'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1 AND reviewer_id = $2',
+      [id, userId]
+    );
+    if (assignedReviewers.rows.length === 0) {
+      return res.status(403).json({ error: 'You are not assigned as a reviewer for this project' });
+    }
+
+    const approvals = project.reviewer_approvals || {};
+    approvals[userId] = { status: 'approved', updated_at: new Date().toISOString() };
+
+    await db.query(
+      'UPDATE projects SET reviewer_approvals = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [approvals, id]
+    );
+
+    res.json({ success: true, reviewer_approvals: approvals });
+  } catch (error) {
+    return handleError(res, error, 'Reviewer Approve');
+  }
+});
+
+// Final approval (G-CGO / G-CEO)
+app.post('/api/projects/:id/final-approve', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userEmail = req.user.email;
+    const userResult = await db.query('SELECT id FROM users WHERE email = $1', [userEmail]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = userResult.rows[0].id;
+
+    const projectResult = await db.query('SELECT * FROM projects WHERE id = $1', [id]);
+    if (projectResult.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    const project = await ensureProjectRoute(projectResult.rows[0]);
+
+    if (!project.final_approver_user_id || project.final_approver_user_id !== userId) {
+      return res.status(403).json({ error: 'You are not the final approver for this project' });
+    }
+
+    const approvals = project.reviewer_approvals || {};
+    const allApproved = Object.values(approvals).every((a) => a && a.status === 'approved');
+    if (!allApproved) {
+      return res.status(400).json({ error: 'All reviewers must approve before final approval' });
+    }
+
+    await db.query(
+      'UPDATE projects SET application_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      ['approved', id]
+    );
+
+    res.json({ success: true, application_status: 'approved' });
+  } catch (error) {
+    return handleError(res, error, 'Final Approve');
   }
 });
 
@@ -1651,6 +1805,40 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, 
     }
   } catch (error) {
     return handleError(res, error, 'Delete User');
+  }
+});
+
+// Admin: Get approval routes by amount threshold
+app.get('/api/admin/approval-routes', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM approval_routes ORDER BY amount_threshold');
+    res.json({ routes: result.rows });
+  } catch (error) {
+    return handleError(res, error, 'Get Approval Routes');
+  }
+});
+
+// Admin: Upsert approval route
+app.put('/api/admin/approval-routes', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { amount_threshold, reviewer_ids, final_approver_user_id } = req.body;
+    if (!amount_threshold || ![APPROVAL_THRESHOLD.UNDER_100M, APPROVAL_THRESHOLD.OVER_EQ_100M].includes(amount_threshold)) {
+      return res.status(400).json({ error: `amount_threshold must be one of: ${APPROVAL_THRESHOLD.UNDER_100M}, ${APPROVAL_THRESHOLD.OVER_EQ_100M}` });
+    }
+
+    const reviewersArray = Array.isArray(reviewer_ids) ? reviewer_ids : [];
+    await db.query(
+      `INSERT INTO approval_routes (amount_threshold, reviewer_ids, final_approver_user_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (amount_threshold)
+       DO UPDATE SET reviewer_ids = EXCLUDED.reviewer_ids, final_approver_user_id = EXCLUDED.final_approver_user_id, updated_at = CURRENT_TIMESTAMP`,
+      [amount_threshold, reviewersArray, final_approver_user_id || null]
+    );
+
+    const result = await db.query('SELECT * FROM approval_routes ORDER BY amount_threshold');
+    res.json({ routes: result.rows });
+  } catch (error) {
+    return handleError(res, error, 'Upsert Approval Route');
   }
 });
 
