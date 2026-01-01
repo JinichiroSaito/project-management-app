@@ -44,11 +44,36 @@ function buildReviewerApprovals(project, reviewers) {
 }
 
 async function ensureProjectRoute(project) {
-  if (project.final_approver_user_id && project.reviewer_approvals) return project;
+  // final_approver_user_idが設定されていて、reviewer_approvalsが存在し、かつ空でない場合のみ早期リターン
+  const hasReviewerApprovals = project.reviewer_approvals && 
+                                typeof project.reviewer_approvals === 'object' && 
+                                Object.keys(project.reviewer_approvals).length > 0;
+  
+  if (project.final_approver_user_id && hasReviewerApprovals) {
+    console.log('[Ensure Project Route] Route already set, returning project:', {
+      projectId: project.id,
+      final_approver_user_id: project.final_approver_user_id,
+      reviewer_approvals_keys: Object.keys(project.reviewer_approvals || {})
+    });
+    return project;
+  }
+  
   const route = await getApprovalRouteByAmount(parseFloat(project.requested_amount || 0));
-  if (!route) return project;
+  if (!route) {
+    console.log('[Ensure Project Route] No route found for amount:', project.requested_amount);
+    return project;
+  }
+
+  console.log('[Ensure Project Route] Building reviewer approvals:', {
+    projectId: project.id,
+    routeReviewerIds: route.reviewer_ids,
+    currentApprovals: project.reviewer_approvals
+  });
 
   const reviewerApprovals = buildReviewerApprovals(project, route.reviewer_ids || []);
+  
+  console.log('[Ensure Project Route] Built reviewer approvals:', reviewerApprovals);
+  
   await db.query(
     `UPDATE projects
      SET final_approver_user_id = $1,
