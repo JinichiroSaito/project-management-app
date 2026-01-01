@@ -484,9 +484,20 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
       return res.status(404).json({ error: 'User not found' });
     }
     
-    // 審査者であることを確認
-    if (currentUser.rows[0].position !== 'reviewer') {
-      return res.status(403).json({ error: 'Only reviewers can access this endpoint' });
+    const userId = currentUser.rows[0].id;
+    const isReviewer = currentUser.rows[0].position === 'reviewer';
+    
+    // 審査者または最終決裁者であることを確認
+    if (!isReviewer) {
+      // 最終決裁者としてのアクセスを確認（final_approver_user_idが設定されているプロジェクトがあるか）
+      const finalApproverCheck = await db.query(
+        'SELECT COUNT(*) as count FROM projects WHERE final_approver_user_id = $1',
+        [userId]
+      );
+      
+      if (parseInt(finalApproverCheck.rows[0]?.count || 0) === 0) {
+        return res.status(403).json({ error: 'Only reviewers or final approvers can access this endpoint' });
+      }
     }
     
     let result;
@@ -507,44 +518,120 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
       
       if (hasProjectReviewersTable.rows[0]?.exists) {
         // project_reviewersテーブルが存在する場合
-        // より確実な方法：サブクエリを使用して、現在のユーザーが審査者として割り当てられているプロジェクトを取得
-      result = await db.query(
-        `SELECT p.*, 
-                u1.name as executor_name, u1.email as executor_email,
-                  u2.name as reviewer_name, u2.email as reviewer_email,
-                  p.extracted_text,
-                  p.extracted_text_updated_at,
-                  p.missing_sections,
-                  p.missing_sections_updated_at,
-                  COALESCE(
-                    (
-                      SELECT json_agg(
-                        json_build_object(
-                          'id', u3.id,
-                          'name', u3.name,
-                          'email', u3.email
+        if (isReviewer) {
+          // 審査者の場合：現在のユーザーが審査者として割り当てられているプロジェクトを取得
+          result = await db.query(
+            `SELECT p.*, 
+                    u1.name as executor_name, u1.email as executor_email,
+                    u2.name as reviewer_name, u2.email as reviewer_email,
+                    p.extracted_text,
+                    p.extracted_text_updated_at,
+                    p.missing_sections,
+                    p.missing_sections_updated_at,
+                    COALESCE(
+                      (
+                        SELECT json_agg(
+                          json_build_object(
+                            'id', u3.id,
+                            'name', u3.name,
+                            'email', u3.email
+                          )
                         )
-                      )
-                      FROM project_reviewers pr2
-                      LEFT JOIN users u3 ON pr2.reviewer_id = u3.id
-                      WHERE pr2.project_id = p.id
-                    ),
-                    '[]'::json
-                  ) as reviewers
-         FROM projects p
-         LEFT JOIN users u1 ON p.executor_id = u1.id
-         LEFT JOIN users u2 ON p.reviewer_id = u2.id
-           WHERE p.application_status = 'submitted'
-             AND (
-               p.reviewer_id = $1 
-               OR EXISTS (
-                 SELECT 1 FROM project_reviewers pr 
-                 WHERE pr.project_id = p.id AND pr.reviewer_id = $1
+                        FROM project_reviewers pr2
+                        LEFT JOIN users u3 ON pr2.reviewer_id = u3.id
+                        WHERE pr2.project_id = p.id
+                      ),
+                      '[]'::json
+                    ) as reviewers
+           FROM projects p
+           LEFT JOIN users u1 ON p.executor_id = u1.id
+           LEFT JOIN users u2 ON p.reviewer_id = u2.id
+             WHERE p.application_status = 'submitted'
+               AND (
+                 p.reviewer_id = $1 
+                 OR EXISTS (
+                   SELECT 1 FROM project_reviewers pr 
+                   WHERE pr.project_id = p.id AND pr.reviewer_id = $1
+                 )
                )
-             )
-         ORDER BY p.created_at DESC`,
-          [userId]
-        );
+           ORDER BY p.created_at DESC`,
+            [userId]
+          );
+        } else {
+          // 最終決裁者の場合：すべての審査者が承認済みのプロジェクトを取得
+          // まず、最終決裁者として設定されているすべてのプロジェクトを取得
+          const allProjects = await db.query(
+            `SELECT p.*, 
+                    u1.name as executor_name, u1.email as executor_email,
+                    u2.name as reviewer_name, u2.email as reviewer_email,
+                    p.extracted_text,
+                    p.extracted_text_updated_at,
+                    p.missing_sections,
+                    p.missing_sections_updated_at,
+                    COALESCE(
+                      (
+                        SELECT json_agg(
+                          json_build_object(
+                            'id', u3.id,
+                            'name', u3.name,
+                            'email', u3.email
+                          )
+                        )
+                        FROM project_reviewers pr2
+                        LEFT JOIN users u3 ON pr2.reviewer_id = u3.id
+                        WHERE pr2.project_id = p.id
+                      ),
+                      '[]'::json
+                    ) as reviewers
+           FROM projects p
+           LEFT JOIN users u1 ON p.executor_id = u1.id
+           LEFT JOIN users u2 ON p.reviewer_id = u2.id
+           WHERE p.application_status = 'submitted'
+             AND p.final_approver_user_id = $1
+           ORDER BY p.created_at DESC`,
+            [userId]
+          );
+          
+          console.log('[Review Pending] Found projects for final approver:', allProjects.rows.length);
+          
+          // すべての審査者が承認済みのプロジェクトのみをフィルタリング
+          const filteredProjects = [];
+          for (const project of allProjects.rows) {
+            const reviewers = await db.query(
+              'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
+              [project.id]
+            );
+            
+            if (reviewers.rows.length === 0) {
+              console.log('[Review Pending] Project has no reviewers:', project.id);
+              continue; // 審査者が設定されていない場合はスキップ
+            }
+            
+            const reviewerIds = reviewers.rows.map(r => r.reviewer_id);
+            const approvals = project.reviewer_approvals || {};
+            
+            // すべての審査者が承認しているか確認
+            const allApproved = reviewerIds.every((reviewerId) => {
+              const approval = approvals[reviewerId];
+              return approval && approval.status === 'approved';
+            });
+            
+            console.log('[Review Pending] Project approval status:', {
+              projectId: project.id,
+              projectName: project.name,
+              totalReviewers: reviewerIds.length,
+              approvals: approvals,
+              allApproved: allApproved
+            });
+            
+            if (allApproved) {
+              filteredProjects.push(project);
+            }
+          }
+          
+          console.log('[Review Pending] Filtered projects (all reviewers approved):', filteredProjects.length);
+          result = { rows: filteredProjects };
+        }
       } else {
         // project_reviewersテーブルが存在しない場合（後方互換性）
         result = await db.query(
