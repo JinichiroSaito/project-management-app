@@ -298,7 +298,9 @@ const ReviewDashboard = () => {
   const handleFinalApprove = async (project) => {
     setApprovalLoading((prev) => ({ ...prev, [project.id]: true }));
     try {
-      await api.post(`/api/projects/${project.id}/final-approve`);
+      await api.post(`/api/projects/${project.id}/final-approve`, {
+        decision: 'approved'
+      });
       await refreshApprovalStatus(project.id);
       // refresh lists to move to approved tab
       fetchPendingReviews();
@@ -306,6 +308,31 @@ const ReviewDashboard = () => {
     } catch (error) {
       console.error('Final approve failed:', error);
       alert(error.response?.data?.error || 'Failed to approve as final approver');
+    } finally {
+      setApprovalLoading((prev) => ({ ...prev, [project.id]: false }));
+    }
+  };
+
+  const handleFinalReject = async (project) => {
+    const comment = prompt(t('review.commentPlaceholder', 'Enter your review comment...'));
+    if (!comment || !comment.trim()) {
+      alert(t('review.commentRequired', 'Review comment is required when rejecting'));
+      return;
+    }
+
+    setApprovalLoading((prev) => ({ ...prev, [project.id]: true }));
+    try {
+      await api.post(`/api/projects/${project.id}/final-approve`, {
+        decision: 'rejected',
+        review_comment: comment
+      });
+      await refreshApprovalStatus(project.id);
+      // refresh lists
+      fetchPendingReviews();
+      fetchApprovedProjects();
+    } catch (error) {
+      console.error('Final reject failed:', error);
+      alert(error.response?.data?.error || 'Failed to reject as final approver');
     } finally {
       setApprovalLoading((prev) => ({ ...prev, [project.id]: false }));
     }
@@ -364,19 +391,34 @@ const ReviewDashboard = () => {
             </button>
           )}
           {isFinalApprover && allApproved && project.application_status !== 'approved' && (
-            <button
-              disabled={approvalLoading[project.id]}
-              onClick={() => handleFinalApprove(project)}
-              className={`px-2 py-1 rounded text-xs ${
-                approvalLoading[project.id]
-                  ? 'bg-gray-100 text-gray-500'
-                  : 'bg-green-600 text-white hover:bg-green-700'
-              }`}
-            >
-              {approvalLoading[project.id]
-                ? t('common.processing', 'Processing...')
-                : t('review.approval.finalApprove', 'Final approve')}
-            </button>
+            <>
+              <button
+                disabled={approvalLoading[project.id]}
+                onClick={() => handleFinalApprove(project)}
+                className={`px-2 py-1 rounded text-xs ${
+                  approvalLoading[project.id]
+                    ? 'bg-gray-100 text-gray-500'
+                    : 'bg-green-600 text-white hover:bg-green-700'
+                }`}
+              >
+                {approvalLoading[project.id]
+                  ? t('common.processing', 'Processing...')
+                  : t('review.approval.finalApprove', 'Final approve')}
+              </button>
+              <button
+                disabled={approvalLoading[project.id]}
+                onClick={() => handleFinalReject(project)}
+                className={`px-2 py-1 rounded text-xs ${
+                  approvalLoading[project.id]
+                    ? 'bg-gray-100 text-gray-500'
+                    : 'bg-red-600 text-white hover:bg-red-700'
+                }`}
+              >
+                {approvalLoading[project.id]
+                  ? t('common.processing', 'Processing...')
+                  : t('review.approval.finalReject', 'Final reject')}
+              </button>
+            </>
           )}
         </div>
       </div>

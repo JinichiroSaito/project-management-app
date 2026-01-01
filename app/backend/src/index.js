@@ -916,10 +916,16 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
   }
 });
 
-// Final approval (G-CGO / G-CEO)
+// Final approval/rejection (G-CGO / G-CEO)
 app.post('/api/projects/:id/final-approve', authenticateToken, requireApproved, async (req, res) => {
   try {
     const { id } = req.params;
+    const { decision, review_comment } = req.body; // decision: 'approved' or 'rejected'
+    
+    if (!decision || !['approved', 'rejected'].includes(decision)) {
+      return res.status(400).json({ error: 'Decision must be either "approved" or "rejected"' });
+    }
+    
     const userEmail = req.user.email;
     const userResult = await db.query('SELECT id FROM users WHERE email = $1', [userEmail]);
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -933,51 +939,64 @@ app.post('/api/projects/:id/final-approve', authenticateToken, requireApproved, 
       return res.status(403).json({ error: 'You are not the final approver for this project' });
     }
 
-    // プロジェクトに割り当てられているすべての審査者を取得
-    const assignedReviewers = await db.query(
-      'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
-      [id]
-    );
-    
-    if (assignedReviewers.rows.length === 0) {
-      return res.status(400).json({ error: 'No reviewers assigned to this project' });
+    // 却下の場合、コメントが必須
+    if (decision === 'rejected' && !review_comment?.trim()) {
+      return res.status(400).json({ error: 'Review comment is required when rejecting' });
     }
-    
-    const reviewerIds = assignedReviewers.rows.map(r => r.reviewer_id);
-    const approvals = project.reviewer_approvals || {};
-    
-    // すべての審査者が承認しているか確認
-    // 1. すべての審査者IDがapprovalsに含まれているか
-    // 2. すべての審査者のステータスが'approved'か
-    const allReviewersApproved = reviewerIds.every((reviewerId) => {
-      const approval = approvals[reviewerId];
-      return approval && approval.status === 'approved';
-    });
-    
-    if (!allReviewersApproved) {
-      const approvedCount = reviewerIds.filter((reviewerId) => {
+
+    // 承認の場合のみ、すべての審査者が承認しているか確認
+    if (decision === 'approved') {
+      // プロジェクトに割り当てられているすべての審査者を取得
+      const assignedReviewers = await db.query(
+        'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
+        [id]
+      );
+      
+      if (assignedReviewers.rows.length === 0) {
+        return res.status(400).json({ error: 'No reviewers assigned to this project' });
+      }
+      
+      const reviewerIds = assignedReviewers.rows.map(r => r.reviewer_id);
+      const approvals = project.reviewer_approvals || {};
+      
+      // すべての審査者が承認しているか確認
+      const allReviewersApproved = reviewerIds.every((reviewerId) => {
         const approval = approvals[reviewerId];
         return approval && approval.status === 'approved';
-      }).length;
-      
-      return res.status(400).json({ 
-        error: 'All reviewers must approve before final approval',
-        details: {
-          total_reviewers: reviewerIds.length,
-          approved_count: approvedCount,
-          pending_count: reviewerIds.length - approvedCount
-        }
       });
+      
+      if (!allReviewersApproved) {
+        const approvedCount = reviewerIds.filter((reviewerId) => {
+          const approval = approvals[reviewerId];
+          return approval && approval.status === 'approved';
+        }).length;
+        
+        return res.status(400).json({ 
+          error: 'All reviewers must approve before final approval',
+          details: {
+            total_reviewers: reviewerIds.length,
+            approved_count: approvedCount,
+            pending_count: reviewerIds.length - approvedCount
+          }
+        });
+      }
     }
 
+    // ステータスを更新
     await db.query(
-      'UPDATE projects SET application_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      ['approved', id]
+      `UPDATE projects 
+       SET application_status = $1, 
+           review_comment = $2,
+           reviewed_at = CURRENT_TIMESTAMP,
+           reviewed_by = $3,
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $4`,
+      [decision === 'approved' ? 'approved' : 'rejected', review_comment || null, userId, id]
     );
 
-    res.json({ success: true, application_status: 'approved' });
+    res.json({ success: true, application_status: decision === 'approved' ? 'approved' : 'rejected' });
   } catch (error) {
-    return handleError(res, error, 'Final Approve');
+    return handleError(res, error, 'Final Approve/Reject');
   }
 });
 
