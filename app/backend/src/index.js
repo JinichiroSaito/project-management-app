@@ -828,6 +828,7 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
       final_approver_user_id: projectWithRoute.final_approver_user_id,
       final_approver_name: projectWithRoute.final_approver_name,
       final_approver_email: projectWithRoute.final_approver_email,
+      final_review_comment: projectWithRoute.final_review_comment || projectWithRoute.review_comment, // 最終決裁者の却下コメント
       final_approval_status: finalApprovalStatus,
       reviewers: reviewerStatuses,
       reviewer_approvals: reviewerApprovals,

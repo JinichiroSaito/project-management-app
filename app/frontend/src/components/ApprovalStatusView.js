@@ -134,24 +134,40 @@ const ApprovalStatusView = ({ projectId, onClose }) => {
 
           {reviewers.length > 0 ? (
             <div className="space-y-3">
-              {reviewers.map((reviewer) => (
-                <div key={reviewer.reviewer_id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-                  <div className="flex-1">
-                    <div className="font-medium text-gray-900">{reviewer.reviewer_name || reviewer.reviewer_email}</div>
-                    {reviewer.reviewer_email && reviewer.reviewer_name && (
-                      <div className="text-sm text-gray-500">{reviewer.reviewer_email}</div>
-                    )}
-                    {reviewer.updated_at && (
-                      <div className="text-xs text-gray-400 mt-1">
-                        更新: {new Date(reviewer.updated_at).toLocaleString('ja-JP')}
+              {reviewers.map((reviewer) => {
+                const reviewerApproval = approvalStatus.reviewer_approvals?.[reviewer.id] || approvalStatus.reviewer_approvals?.[reviewer.reviewer_id];
+                const isRejected = reviewerApproval?.status === 'rejected';
+                const rejectionComment = reviewerApproval?.review_comment;
+                
+                return (
+                  <div key={reviewer.id || reviewer.reviewer_id} className={`p-3 border rounded-lg ${isRejected ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">{reviewer.reviewer_name || reviewer.name || reviewer.reviewer_email || reviewer.email}</div>
+                        {(reviewer.reviewer_email || reviewer.email) && (reviewer.reviewer_name || reviewer.name) && (
+                          <div className="text-sm text-gray-500">{reviewer.reviewer_email || reviewer.email}</div>
+                        )}
+                        {reviewerApproval?.updated_at && (
+                          <div className="text-xs text-gray-400 mt-1">
+                            更新: {new Date(reviewerApproval.updated_at).toLocaleString('ja-JP')}
+                          </div>
+                        )}
+                      </div>
+                      <div className="ml-4">
+                        {getStatusBadge(reviewer.status || reviewerApproval?.status || 'pending')}
+                      </div>
+                    </div>
+                    {isRejected && rejectionComment && (
+                      <div className="mt-3 pt-3 border-t border-red-200">
+                        <div className="text-sm font-medium text-red-800 mb-1">却下理由:</div>
+                        <div className="text-sm text-red-700 whitespace-pre-wrap bg-white p-2 rounded border border-red-200">
+                          {rejectionComment}
+                        </div>
                       </div>
                     )}
                   </div>
-                  <div className="ml-4">
-                    {getStatusBadge(reviewer.status)}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="text-center text-gray-500 py-4">審査者が割り当てられていません</div>
@@ -162,7 +178,7 @@ const ApprovalStatusView = ({ projectId, onClose }) => {
         {approvalStatus.final_approver_user_id && (
           <div className="mb-6">
             <h4 className="text-lg font-semibold text-gray-900 mb-4">最終承認状況</h4>
-            <div className="p-4 border border-gray-200 rounded-lg">
+            <div className={`p-4 border rounded-lg ${application_status === 'rejected' ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}>
               <div className="flex items-center justify-between mb-2">
                 <div>
                   <div className="font-medium text-gray-900">
@@ -176,6 +192,14 @@ const ApprovalStatusView = ({ projectId, onClose }) => {
                   {getStatusBadge(final_approval_status)}
                 </div>
               </div>
+              {application_status === 'rejected' && approvalStatus.final_review_comment && (
+                <div className="mt-3 pt-3 border-t border-red-200">
+                  <div className="text-sm font-medium text-red-800 mb-1">却下理由:</div>
+                  <div className="text-sm text-red-700 whitespace-pre-wrap bg-white p-2 rounded border border-red-200">
+                    {approvalStatus.final_review_comment}
+                  </div>
+                </div>
+              )}
               {approval_summary.all_reviewers_approved && final_approval_status === 'pending' && (
                 <div className="mt-2 text-sm text-blue-600">
                   ✓ すべての審査者が承認しました。最終承認待ちです。
