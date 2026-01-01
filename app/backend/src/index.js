@@ -74,6 +74,19 @@ app.set('trust proxy', true);
 initializeFirebase();
 
 // セキュリティヘッダーの設定
+// CSPのconnectSrcは、フロントエンドからバックエンドへの接続を許可するため、'self'に加えてFRONTEND_URLも許可
+const frontendUrl = process.env.FRONTEND_URL || process.env.APP_URL;
+const connectSrc = ["'self'"];
+if (frontendUrl) {
+  // FRONTEND_URLからオリジンを抽出して追加
+  try {
+    const url = new URL(frontendUrl);
+    connectSrc.push(url.origin);
+  } catch (e) {
+    console.warn('[CSP] Invalid FRONTEND_URL:', frontendUrl);
+  }
+}
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -81,7 +94,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"],
+      connectSrc: connectSrc,
       fontSrc: ["'self'"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],

@@ -54,7 +54,7 @@ steps:
       - '--allow-unauthenticated'
       - '--vpc-connector=vpc-connector'
       - '--service-account=cloud-run-prod@${PROJECT_ID}.iam.gserviceaccount.com'
-      - '--set-env-vars=DB_HOST=10.81.0.6,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user,NODE_ENV=production,EMAIL_SERVICE=gmail,ADMIN_EMAIL=jinichirou.saitou@asahi-gh.com,APP_URL=https://frontend-prod-823277232006.asia-northeast1.run.app,FRONTEND_URL=https://frontend-prod-823277232006.asia-northeast1.run.app,GCS_BUCKET_NAME=pm-app-uploads-prod,GEMINI_MODEL_NAME=gemini-3.0-flash,USE_VERTEX_AI=true,VERTEX_AI_LOCATION=us-central1'
+      - '--set-env-vars=DB_HOST=10.81.0.6,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user,NODE_ENV=production,EMAIL_SERVICE=gmail,ADMIN_EMAIL=jinichirou.saitou@asahi-gh.com,APP_URL=https://frontend-prod-lerydx77wa-an.a.run.app,FRONTEND_URL=https://frontend-prod-lerydx77wa-an.a.run.app,GCS_BUCKET_NAME=pm-app-uploads-prod,GEMINI_MODEL_NAME=gemini-3.0-flash,USE_VERTEX_AI=true,VERTEX_AI_LOCATION=us-central1'
       - '--set-secrets=DB_PASSWORD=db-password-prod:latest,FIREBASE_SERVICE_ACCOUNT=firebase-service-account-dev:latest,EMAIL_USER=email-user-dev:latest,EMAIL_APP_PASSWORD=email-app-password-dev:latest,GEMINI_API_KEY=gemini-api-key-dev:latest'
 
 options:
