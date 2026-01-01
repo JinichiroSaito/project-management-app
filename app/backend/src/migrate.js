@@ -1,3 +1,8 @@
+// ローカル開発環境で.envファイルを読み込む
+if (process.env.NODE_ENV !== 'production' && !process.env.GCP_PROJECT) {
+  require('dotenv').config();
+}
+
 const fs = require('fs');
 const path = require('path');
 const db = require('./db');

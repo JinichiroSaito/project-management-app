@@ -5,6 +5,7 @@ import { useLanguage } from '../LanguageContext';
 import ProjectApplicationForm from './ProjectApplicationForm';
 import ProjectKpiReports from './ProjectKpiReports';
 import ProjectBudgetManagement from './ProjectBudgetManagement';
+import ApprovalStatusView from './ApprovalStatusView';
 
 const ProjectList = () => {
   const [projects, setProjects] = useState([]);
@@ -14,6 +15,7 @@ const ProjectList = () => {
   const [editingProject, setEditingProject] = useState(null);
   const [selectedProjectForKpi, setSelectedProjectForKpi] = useState(null);
   const [selectedProjectForBudget, setSelectedProjectForBudget] = useState(null);
+  const [selectedProjectForApprovalStatus, setSelectedProjectForApprovalStatus] = useState(null);
   const { user, userInfo } = useAuth();
   const { t, language } = useLanguage();
   
@@ -469,6 +471,15 @@ const ProjectList = () => {
             {isExecutor && project.executor_id === userInfo?.id && (
               <div className="mt-4 flex flex-col space-y-2">
                 <div className="flex flex-wrap gap-2">
+                  {/* 審査状況表示ボタン（提出済みまたは承認済みの場合） */}
+                  {(project.application_status === 'submitted' || project.application_status === 'approved') && (
+                    <button
+                      onClick={() => setSelectedProjectForApprovalStatus(selectedProjectForApprovalStatus?.id === project.id ? null : project)}
+                      className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md"
+                    >
+                      {selectedProjectForApprovalStatus?.id === project.id ? '審査状況を閉じる' : '審査状況を確認'}
+                    </button>
+                  )}
                   {project.application_status === 'draft' && (
                     <>
                       <button
@@ -548,6 +559,22 @@ const ProjectList = () => {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* 審査状況表示モーダル */}
+            {selectedProjectForApprovalStatus?.id === project.id && (
+              <ApprovalStatusView
+                projectId={project.id}
+                onClose={() => {
+                  setSelectedProjectForApprovalStatus(null);
+                  // 審査状況を更新
+                  if (isExecutor) {
+                    fetchMyProjects();
+                  } else {
+                    fetchProjects();
+                  }
+                }}
+              />
             )}
             
             {/* 管理者が全てのプロジェクトを削除できる場合（実行者が自分のプロジェクトを操作する場合を除く） */}

@@ -74,7 +74,11 @@ const createTransporter = () => {
 
 // 管理者への承認依頼メール送信（プロフィール情報を含む）
 async function sendApprovalRequestEmail(userEmail, userName, company, department, position) {
-  const adminEmail = process.env.ADMIN_EMAIL || 'jinichirou.saitou@asahi-gh.com';
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (!adminEmail) {
+    console.error('[Email] ADMIN_EMAIL environment variable is not set. Cannot send approval request email.');
+    throw new Error('ADMIN_EMAIL is not configured');
+  }
   const appUrl = process.env.APP_URL || 'https://frontend-dev-823277232006.asia-northeast1.run.app';
   
   const transporter = createTransporter();

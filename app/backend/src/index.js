@@ -370,9 +370,8 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
          ORDER BY p.created_at DESC`,
         [currentUser.rows[0].id]
       );
-      console.log('[My Projects] Query successful, found', result.rows.length, 'projects');
-      if (result.rows.length > 0) {
-        console.log('[My Projects] First project executor_id:', result.rows[0].executor_id, 'Query executor_id:', currentUser.rows[0].id);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[My Projects] Query successful, found', result.rows.length, 'projects');
       }
     } catch (queryError) {
       // 新しいカラムが存在しない場合、従来のクエリを試行
@@ -396,24 +395,8 @@ app.get('/api/projects/my', authenticateToken, requireApproved, async (req, res)
       }
     }
     
-    console.log(`[My Projects] Fetched ${result.rows.length} projects for executor ${currentUser.rows[0].id} (${req.user.email})`);
-    
-    // デバッグ情報: 全プロジェクト数とexecutor_idの分布を確認
-    try {
-      const allProjectsDebug = await db.query('SELECT id, name, executor_id, application_status, created_at FROM projects ORDER BY created_at DESC');
-      console.log('[My Projects] Debug - All projects in database:', {
-        totalProjects: allProjectsDebug.rows.length,
-        projects: allProjectsDebug.rows.map(p => ({
-          id: p.id,
-          name: p.name,
-          executor_id: p.executor_id,
-          executor_id_type: typeof p.executor_id,
-          application_status: p.application_status,
-          created_at: p.created_at
-        }))
-      });
-    } catch (debugError) {
-      console.warn('[My Projects] Debug query failed:', debugError.message);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[My Projects] Fetched ${result.rows.length} projects for executor ${currentUser.rows[0].id} (${req.user.email})`);
     }
     
     res.json({ projects: result.rows });
@@ -601,6 +584,11 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
 app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved, async (req, res) => {
   try {
     const { id } = req.params;
+    const userEmail = req.user.email;
+    const userResult = await db.query('SELECT id FROM users WHERE email = $1', [userEmail]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = userResult.rows[0].id;
+
     const projectResult = await db.query(
       `SELECT p.*, u_final.name AS final_approver_name, u_final.email AS final_approver_email
        FROM projects p
@@ -610,7 +598,21 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
     );
     if (projectResult.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
 
-    const project = await ensureProjectRoute(projectResult.rows[0]);
+    const project = projectResult.rows[0];
+    
+    // 実行者または審査者・管理者のみアクセス可能
+    const isExecutor = project.executor_id === userId;
+    const isAdmin = await db.query('SELECT is_admin FROM users WHERE id = $1', [userId]).then(r => r.rows[0]?.is_admin || false);
+    const isReviewer = await db.query(
+      'SELECT COUNT(*) as count FROM project_reviewers WHERE project_id = $1 AND reviewer_id = $2',
+      [id, userId]
+    ).then(r => parseInt(r.rows[0]?.count || 0) > 0);
+    
+    if (!isExecutor && !isAdmin && !isReviewer) {
+      return res.status(403).json({ error: 'You do not have permission to view this project\'s approval status' });
+    }
+
+    const projectWithRoute = await ensureProjectRoute(project);
 
     const reviewers = await db.query(
       `SELECT u.id, u.name, u.email
@@ -620,13 +622,46 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
       [id]
     );
 
+    // 審査状況の詳細を計算
+    const reviewerApprovals = projectWithRoute.reviewer_approvals || {};
+    const reviewerStatuses = reviewers.rows.map(reviewer => {
+      const approval = reviewerApprovals[reviewer.id];
+      return {
+        reviewer_id: reviewer.id,
+        reviewer_name: reviewer.name,
+        reviewer_email: reviewer.email,
+        status: approval?.status || 'pending',
+        updated_at: approval?.updated_at || null
+      };
+    });
+
+    // 全体の審査状況を計算
+    const totalReviewers = reviewers.rows.length;
+    const approvedCount = Object.values(reviewerApprovals).filter(a => a?.status === 'approved').length;
+    const allReviewersApproved = totalReviewers > 0 && approvedCount === totalReviewers;
+    const canProceedToFinalApproval = allReviewersApproved && projectWithRoute.final_approver_user_id;
+
+    // 最終承認状況
+    const finalApprovalStatus = projectWithRoute.application_status === 'approved' ? 'approved' : 
+                                (canProceedToFinalApproval ? 'pending' : 'waiting');
+
     res.json({
-      project_id: project.id,
-      final_approver_user_id: project.final_approver_user_id,
-      final_approver_name: project.final_approver_name,
-      final_approver_email: project.final_approver_email,
-      reviewer_approvals: project.reviewer_approvals || {},
-      reviewers: reviewers.rows
+      project_id: projectWithRoute.id,
+      project_name: projectWithRoute.name,
+      application_status: projectWithRoute.application_status,
+      final_approver_user_id: projectWithRoute.final_approver_user_id,
+      final_approver_name: projectWithRoute.final_approver_name,
+      final_approver_email: projectWithRoute.final_approver_email,
+      final_approval_status: finalApprovalStatus,
+      reviewers: reviewerStatuses,
+      reviewer_approvals: reviewerApprovals,
+      approval_summary: {
+        total_reviewers: totalReviewers,
+        approved_count: approvedCount,
+        pending_count: totalReviewers - approvedCount,
+        all_reviewers_approved: allReviewersApproved,
+        can_proceed_to_final_approval: canProceedToFinalApproval
+      }
     });
   } catch (error) {
     return handleError(res, error, 'Get Approval Status');
@@ -654,15 +689,52 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
       return res.status(403).json({ error: 'You are not assigned as a reviewer for this project' });
     }
 
-    const approvals = project.reviewer_approvals || {};
-    approvals[userId] = { status: 'approved', updated_at: new Date().toISOString() };
+    // 楽観的ロック：現在のreviewer_approvalsを取得してから更新
+    const currentApprovals = project.reviewer_approvals || {};
+    
+    // 既に承認済みの場合はエラーを返す
+    if (currentApprovals[userId] && currentApprovals[userId].status === 'approved') {
+      return res.status(400).json({ 
+        error: 'You have already approved this project',
+        reviewer_approvals: currentApprovals
+      });
+    }
+    
+    // 承認を追加
+    const updatedApprovals = { ...currentApprovals };
+    updatedApprovals[userId] = { status: 'approved', updated_at: new Date().toISOString() };
 
-    await db.query(
-      'UPDATE projects SET reviewer_approvals = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [approvals, id]
+    // 楽観的ロック：reviewer_approvalsが変更されていないことを確認してから更新
+    const updateResult = await db.query(
+      `UPDATE projects 
+       SET reviewer_approvals = $1::jsonb, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $2 AND (reviewer_approvals = $3::jsonb OR reviewer_approvals IS NULL)
+       RETURNING reviewer_approvals`,
+      [updatedApprovals, id, currentApprovals]
     );
 
-    res.json({ success: true, reviewer_approvals: approvals });
+    if (updateResult.rows.length === 0) {
+      // 競合が発生した場合（他の審査者が同時に承認した場合）
+      // 最新の状態を取得して再試行
+      const latestProject = await db.query('SELECT reviewer_approvals FROM projects WHERE id = $1', [id]);
+      const latestApprovals = latestProject.rows[0]?.reviewer_approvals || {};
+      
+      // 既に承認済みの場合は成功として扱う
+      if (latestApprovals[userId] && latestApprovals[userId].status === 'approved') {
+        return res.json({ 
+          success: true, 
+          reviewer_approvals: latestApprovals,
+          message: 'Already approved (concurrent update detected)'
+        });
+      }
+      
+      return res.status(409).json({ 
+        error: 'Concurrent update detected. Please refresh and try again.',
+        reviewer_approvals: latestApprovals
+      });
+    }
+
+    res.json({ success: true, reviewer_approvals: updatedApprovals });
   } catch (error) {
     return handleError(res, error, 'Reviewer Approve');
   }
@@ -856,70 +928,55 @@ app.post('/api/projects', uploadLimiter, authenticateToken, requireApproved, upl
       console.warn('[Project Create] No file received in req.file');
     }
     
-    // プロジェクトを作成
+    // プロジェクトを作成（トランザクション内で実行）
     console.log('[Project Create] Creating project with executor_id:', executorId, 'for user:', req.user.email);
     let result;
     try {
-      // ファイルアップロードカラムが存在する場合のINSERT
-      // 後方互換性のため、最初の審査者IDをreviewer_idに設定
-      const firstReviewerId = reviewerIds.length > 0 ? reviewerIds[0] : null;
-      result = await db.query(
-        `INSERT INTO projects (
-          name, description, status, executor_id, reviewer_id, requested_amount, application_status,
-          application_file_url, application_file_name, application_file_type, application_file_size, application_file_uploaded_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
-        [
-          name, 
-          description || '', 
-          'planning', 
-          executorId, 
-          firstReviewerId, 
-          requested_amount, 
-          'draft',
-          fileInfo?.url || null,
-          fileInfo?.originalName || null,
-          fileInfo?.contentType || null,
-          fileInfo?.size || null,
-          fileInfo ? new Date() : null
-        ]
-      );
-      
-      // project_reviewersテーブルに複数の審査者を保存
-      if (reviewerIds.length > 0) {
-        const projectId = result.rows[0].id;
-        console.log('[Project Create] Saving reviewers to project_reviewers table:', {
-          projectId: projectId,
-          reviewerIds: reviewerIds
-        });
-        for (const reviewerId of reviewerIds) {
-          try {
-            const insertResult = await db.query(
-              'INSERT INTO project_reviewers (project_id, reviewer_id) VALUES ($1, $2) ON CONFLICT (project_id, reviewer_id) DO NOTHING RETURNING *',
+      // トランザクション内でプロジェクト作成と審査者の割り当てを実行
+      result = await db.withTransaction(async (client) => {
+        // ファイルアップロードカラムが存在する場合のINSERT
+        // 後方互換性のため、最初の審査者IDをreviewer_idに設定
+        const firstReviewerId = reviewerIds.length > 0 ? reviewerIds[0] : null;
+        const projectResult = await client.query(
+          `INSERT INTO projects (
+            name, description, status, executor_id, reviewer_id, requested_amount, application_status,
+            application_file_url, application_file_name, application_file_type, application_file_size, application_file_uploaded_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+          [
+            name, 
+            description || '', 
+            'planning', 
+            executorId, 
+            firstReviewerId, 
+            requested_amount, 
+            'draft',
+            fileInfo?.url || null,
+            fileInfo?.originalName || null,
+            fileInfo?.contentType || null,
+            fileInfo?.size || null,
+            fileInfo ? new Date() : null
+          ]
+        );
+        
+        const projectId = projectResult.rows[0].id;
+        
+        // project_reviewersテーブルに複数の審査者を保存
+        if (reviewerIds.length > 0) {
+          console.log('[Project Create] Saving reviewers to project_reviewers table:', {
+            projectId: projectId,
+            reviewerIds: reviewerIds
+          });
+          for (const reviewerId of reviewerIds) {
+            await client.query(
+              'INSERT INTO project_reviewers (project_id, reviewer_id) VALUES ($1, $2) ON CONFLICT (project_id, reviewer_id) DO NOTHING',
               [projectId, reviewerId]
             );
-            if (insertResult.rows.length > 0) {
-              console.log(`[Project Create] Successfully inserted reviewer ${reviewerId} for project ${projectId}`);
-            } else {
-              console.log(`[Project Create] Reviewer ${reviewerId} already exists for project ${projectId} (conflict resolved)`);
-            }
-          } catch (err) {
-            console.error(`[Project Create] Failed to insert reviewer ${reviewerId} for project ${projectId}:`, err);
-            // エラーが発生しても続行（プロジェクト作成は成功とする）
           }
         }
         
-        // 保存された審査者を確認
-        const savedReviewers = await db.query(
-          'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
-          [projectId]
-        );
-        console.log('[Project Create] Saved reviewers:', {
-          projectId: projectId,
-          savedReviewerIds: savedReviewers.rows.map(r => r.reviewer_id)
-        });
-      } else {
-        console.warn('[Project Create] No reviewers to save to project_reviewers table');
-      }
+        return projectResult;
+      });
+      
       console.log('[Project Create] Project created successfully:', {
         id: result.rows[0].id,
         name: result.rows[0].name,
@@ -927,14 +984,6 @@ app.post('/api/projects', uploadLimiter, authenticateToken, requireApproved, upl
         executor_email: req.user.email,
         current_user_id: executorId
       });
-      
-      // executor_idが正しく設定されているか確認
-      if (result.rows[0].executor_id !== executorId) {
-        console.error('[Project Create] WARNING: executor_id mismatch!', {
-          expected: executorId,
-          actual: result.rows[0].executor_id
-        });
-      }
       
       // ファイルがアップロードされている場合、自動的にテキスト抽出と評価を実行
       if (fileInfo?.url) {
@@ -944,11 +993,19 @@ app.post('/api/projects', uploadLimiter, authenticateToken, requireApproved, upl
         const fileType = fileInfo.contentType;
         
         // 非同期でテキスト抽出と評価を実行（エラーが発生してもプロジェクト作成は成功とする）
+        // エラーハンドリングを強化：エラー詳細をログに記録
         (async () => {
+          let extractionError = null;
+          let analysisError = null;
+          
           try {
             // テキスト抽出
             console.log(`[Project Create] Extracting text from file for project ${projectId}...`);
             const extractedText = await extractTextFromFile(fileUrl, fileType);
+            
+            if (!extractedText || extractedText.trim().length === 0) {
+              throw new Error('Extracted text is empty');
+            }
             
             // データベースに保存
             await db.query(
@@ -958,11 +1015,15 @@ app.post('/api/projects', uploadLimiter, authenticateToken, requireApproved, upl
                WHERE id = $2`,
               [extractedText, projectId]
             );
-            console.log(`[Project Create] Text extracted and saved for project ${projectId}`);
+            console.log(`[Project Create] Text extracted and saved for project ${projectId} (${extractedText.length} characters)`);
             
             // 評価を実行
             console.log(`[Project Create] Checking missing sections for project ${projectId}...`);
             const analysisResult = await checkMissingSections(extractedText);
+            
+            if (!analysisResult) {
+              throw new Error('Analysis result is null or undefined');
+            }
             
             // データベースに保存
             await db.query(
@@ -974,8 +1035,39 @@ app.post('/api/projects', uploadLimiter, authenticateToken, requireApproved, upl
             );
             console.log(`[Project Create] Evaluation completed and saved for project ${projectId}`);
           } catch (autoProcessError) {
-            console.error(`[Project Create] Error in automatic text extraction/evaluation for project ${projectId}:`, autoProcessError);
-            // エラーが発生してもプロジェクト作成は成功とする（ログのみ出力）
+            // エラーの種類を判定してログに記録
+            if (autoProcessError.message && autoProcessError.message.includes('extract')) {
+              extractionError = autoProcessError;
+            } else if (autoProcessError.message && autoProcessError.message.includes('analysis') || autoProcessError.message && autoProcessError.message.includes('missing sections')) {
+              analysisError = autoProcessError;
+            } else {
+              // どちらか特定できない場合は両方の可能性がある
+              extractionError = autoProcessError;
+            }
+            
+            console.error(`[Project Create] Error in automatic processing for project ${projectId}:`, {
+              message: autoProcessError.message,
+              stack: autoProcessError.stack,
+              name: autoProcessError.name,
+              extractionError: extractionError ? extractionError.message : null,
+              analysisError: analysisError ? analysisError.message : null
+            });
+            
+            // エラー情報をデータベースに記録（オプション）
+            try {
+              await db.query(
+                `UPDATE projects 
+                 SET missing_sections = $1
+                 WHERE id = $2`,
+                [JSON.stringify({ 
+                  error: true, 
+                  error_message: autoProcessError.message,
+                  error_timestamp: new Date().toISOString()
+                }), projectId]
+              );
+            } catch (dbError) {
+              console.error(`[Project Create] Failed to save error info to database:`, dbError);
+            }
           }
         })();
       }
@@ -1010,10 +1102,7 @@ app.post('/api/projects', uploadLimiter, authenticateToken, requireApproved, upl
       }
     }
     
-    // レスポンスを返す前に、作成されたプロジェクトを再度取得して確実に返す
-    // 少し待機してから取得（トランザクションのコミットを待つ）
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
+    // 作成されたプロジェクトを再度取得して確実に返す（トランザクション完了後）
     // 複数の審査者を取得
     const createdProject = await db.query(
       `SELECT p.*, 
@@ -1055,16 +1144,14 @@ app.post('/api/projects', uploadLimiter, authenticateToken, requireApproved, upl
     });
     }
     
-    console.log('[Project Create] Returning created project:', {
-      id: createdProject.rows[0].id,
-      executor_id: createdProject.rows[0].executor_id,
-      executor_id_type: typeof createdProject.rows[0].executor_id,
-      executor_name: createdProject.rows[0].executor_name,
-      executor_email: createdProject.rows[0].executor_email,
-      expected_executor_id: executorId,
-      expected_executor_id_type: typeof executorId,
-      match: createdProject.rows[0].executor_id === executorId || createdProject.rows[0].executor_id === parseInt(executorId)
-    });
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Project Create] Returning created project:', {
+        id: createdProject.rows[0].id,
+        executor_id: createdProject.rows[0].executor_id,
+        executor_name: createdProject.rows[0].executor_name,
+        executor_email: createdProject.rows[0].executor_email
+      });
+    }
     
     // executor_idの型を確認（数値として確実に返す）
     const projectData = {
@@ -1205,59 +1292,62 @@ app.put('/api/projects/:id', uploadLimiter, authenticateToken, upload.single('ap
       console.warn('[Project Update] No file received in req.file');
     }
     
-    // ファイルアップロードカラムが存在するかチェックしてからUPDATE
+    // ファイルアップロードカラムが存在するかチェックしてからUPDATE（トランザクション内で実行）
     let result;
     try {
-      // ファイルアップロードカラムが存在する場合のUPDATE
-      // 後方互換性のため、最初の審査者IDをreviewer_idに設定
-      const firstReviewerId = reviewerIdsToUpdate.length > 0 ? reviewerIdsToUpdate[0] : reviewer_id || null;
-      result = await db.query(
-        `UPDATE projects 
-         SET name = COALESCE($1, name), 
-             description = COALESCE($2, description), 
-             status = COALESCE($3, status),
-             requested_amount = COALESCE($4, requested_amount),
-             reviewer_id = COALESCE($5, reviewer_id),
-             application_status = COALESCE($6, application_status),
-             application_file_url = COALESCE($7, application_file_url),
-             application_file_name = COALESCE($8, application_file_name),
-             application_file_type = COALESCE($9, application_file_type),
-             application_file_size = COALESCE($10, application_file_size),
-             application_file_uploaded_at = COALESCE($11, application_file_uploaded_at),
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = $12 RETURNING *`,
-        [
-          name, description, status, requested_amount, firstReviewerId, application_status,
-          fileInfo?.url || null,
-          fileInfo?.originalName || null,
-          fileInfo?.contentType || null,
-          fileInfo?.size || null,
-          fileInfo ? new Date() : null,
-          id
-        ]
-      );
-      
-      // project_reviewersテーブルを更新（reviewer_idsが指定されている場合のみ）
-      if (reviewerIdsToUpdate.length > 0) {
-        // 既存の審査者を削除
-        await db.query('DELETE FROM project_reviewers WHERE project_id = $1', [id]);
+      // トランザクション内でプロジェクト更新と審査者の更新を実行
+      result = await db.withTransaction(async (client) => {
+        // ファイルアップロードカラムが存在する場合のUPDATE
+        // 後方互換性のため、最初の審査者IDをreviewer_idに設定
+        const firstReviewerId = reviewerIdsToUpdate.length > 0 ? reviewerIdsToUpdate[0] : reviewer_id || null;
+        const updateResult = await client.query(
+          `UPDATE projects 
+           SET name = COALESCE($1, name), 
+               description = COALESCE($2, description), 
+               status = COALESCE($3, status),
+               requested_amount = COALESCE($4, requested_amount),
+               reviewer_id = COALESCE($5, reviewer_id),
+               application_status = COALESCE($6, application_status),
+               application_file_url = COALESCE($7, application_file_url),
+               application_file_name = COALESCE($8, application_file_name),
+               application_file_type = COALESCE($9, application_file_type),
+               application_file_size = COALESCE($10, application_file_size),
+               application_file_uploaded_at = COALESCE($11, application_file_uploaded_at),
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $12 RETURNING *`,
+          [
+            name, description, status, requested_amount, firstReviewerId, application_status,
+            fileInfo?.url || null,
+            fileInfo?.originalName || null,
+            fileInfo?.contentType || null,
+            fileInfo?.size || null,
+            fileInfo ? new Date() : null,
+            id
+          ]
+        );
         
-        // 新しい審査者を追加
-        for (const reviewerId of reviewerIdsToUpdate) {
-          try {
-            await db.query(
+        // project_reviewersテーブルを更新（reviewer_idsが指定されている場合のみ）
+        if (reviewerIdsToUpdate.length > 0) {
+          // 既存の審査者を削除
+          await client.query('DELETE FROM project_reviewers WHERE project_id = $1', [id]);
+          
+          // 新しい審査者を追加
+          for (const reviewerId of reviewerIdsToUpdate) {
+            await client.query(
               'INSERT INTO project_reviewers (project_id, reviewer_id) VALUES ($1, $2) ON CONFLICT (project_id, reviewer_id) DO NOTHING',
               [id, reviewerId]
             );
-          } catch (err) {
-            console.error(`[Project Update] Failed to insert reviewer ${reviewerId} for project ${id}:`, err);
           }
         }
-      }
+        
+        return updateResult;
+      });
       
-      // 新しいファイルがアップロードされた場合、古いファイルを削除
+      // 新しいファイルがアップロードされた場合、古いファイルを削除（非同期で実行、エラーは無視）
       if (fileInfo && oldFileUrl) {
-        await deleteFile(oldFileUrl);
+        deleteFile(oldFileUrl).catch(err => {
+          console.error(`[Project Update] Failed to delete old file ${oldFileUrl}:`, err);
+        });
       }
       
       // 新しいファイルがアップロードされている場合、自動的にテキスト抽出と評価を実行
@@ -1268,11 +1358,19 @@ app.put('/api/projects/:id', uploadLimiter, authenticateToken, upload.single('ap
         const fileType = fileInfo.contentType;
         
         // 非同期でテキスト抽出と評価を実行（エラーが発生してもプロジェクト更新は成功とする）
+        // エラーハンドリングを強化：エラー詳細をログに記録
         (async () => {
+          let extractionError = null;
+          let analysisError = null;
+          
           try {
             // テキスト抽出
             console.log(`[Project Update] Extracting text from file for project ${projectId}...`);
             const extractedText = await extractTextFromFile(fileUrl, fileType);
+            
+            if (!extractedText || extractedText.trim().length === 0) {
+              throw new Error('Extracted text is empty');
+            }
             
             // データベースに保存
             await db.query(
@@ -1282,11 +1380,15 @@ app.put('/api/projects/:id', uploadLimiter, authenticateToken, upload.single('ap
                WHERE id = $2`,
               [extractedText, projectId]
             );
-            console.log(`[Project Update] Text extracted and saved for project ${projectId}`);
+            console.log(`[Project Update] Text extracted and saved for project ${projectId} (${extractedText.length} characters)`);
             
             // 評価を実行
             console.log(`[Project Update] Checking missing sections for project ${projectId}...`);
             const analysisResult = await checkMissingSections(extractedText);
+            
+            if (!analysisResult) {
+              throw new Error('Analysis result is null or undefined');
+            }
             
             // データベースに保存
             await db.query(
@@ -1298,8 +1400,39 @@ app.put('/api/projects/:id', uploadLimiter, authenticateToken, upload.single('ap
             );
             console.log(`[Project Update] Evaluation completed and saved for project ${projectId}`);
           } catch (autoProcessError) {
-            console.error(`[Project Update] Error in automatic text extraction/evaluation for project ${projectId}:`, autoProcessError);
-            // エラーが発生してもプロジェクト更新は成功とする（ログのみ出力）
+            // エラーの種類を判定してログに記録
+            if (autoProcessError.message && autoProcessError.message.includes('extract')) {
+              extractionError = autoProcessError;
+            } else if (autoProcessError.message && autoProcessError.message.includes('analysis') || autoProcessError.message && autoProcessError.message.includes('missing sections')) {
+              analysisError = autoProcessError;
+            } else {
+              // どちらか特定できない場合は両方の可能性がある
+              extractionError = autoProcessError;
+            }
+            
+            console.error(`[Project Update] Error in automatic processing for project ${projectId}:`, {
+              message: autoProcessError.message,
+              stack: autoProcessError.stack,
+              name: autoProcessError.name,
+              extractionError: extractionError ? extractionError.message : null,
+              analysisError: analysisError ? analysisError.message : null
+            });
+            
+            // エラー情報をデータベースに記録（オプション）
+            try {
+              await db.query(
+                `UPDATE projects 
+                 SET missing_sections = $1
+                 WHERE id = $2`,
+                [JSON.stringify({ 
+                  error: true, 
+                  error_message: autoProcessError.message,
+                  error_timestamp: new Date().toISOString()
+                }), projectId]
+              );
+            } catch (dbError) {
+              console.error(`[Project Update] Failed to save error info to database:`, dbError);
+            }
           }
         })();
       }
@@ -1512,12 +1645,10 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
       'SELECT id, email, name, company, department, position, is_admin, is_approved, created_at FROM users ORDER BY created_at DESC'
     );
     
-    console.log(`[Admin] Fetched ${result.rows.length} total users`);
-    const pendingCount = result.rows.filter(u => !u.is_approved).length;
-    console.log(`[Admin] Pending users in all users: ${pendingCount}`);
-    const specificUser = result.rows.find(u => u.email === 'jinichirou.saitou@asahigroup-holdings.com');
-    if (specificUser) {
-      console.log(`[Admin] Found specific user:`, { id: specificUser.id, email: specificUser.email, is_approved: specificUser.is_approved });
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Admin] Fetched ${result.rows.length} total users`);
+      const pendingCount = result.rows.filter(u => !u.is_approved).length;
+      console.log(`[Admin] Pending users in all users: ${pendingCount}`);
     }
     
     res.json({ users: result.rows });
@@ -1529,30 +1660,13 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
 // Admin: Get pending approval users
 app.get('/api/admin/users/pending', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    // まず、すべてのユーザーを取得してデバッグ
-    const allUsers = await db.query('SELECT id, email, is_approved FROM users');
-    console.log(`[Admin] Total users in database: ${allUsers.rows.length}`);
-    console.log('[Admin] All users:', allUsers.rows.map(u => ({ id: u.id, email: u.email, is_approved: u.is_approved })));
-    
     // 承認待ちユーザーを取得（プロフィール情報が入力されているもののみ）
     const result = await db.query(
       'SELECT id, email, name, company, department, position, is_approved, created_at FROM users WHERE is_approved = FALSE AND name IS NOT NULL AND company IS NOT NULL AND department IS NOT NULL AND position IS NOT NULL ORDER BY created_at DESC'
     );
     
-    console.log(`[Admin] Fetched ${result.rows.length} pending users`);
-    console.log('[Admin] Pending users:', result.rows.map(u => ({ id: u.id, email: u.email, is_approved: u.is_approved })));
-    
-    // 特定のユーザーを確認
-    const specificUser = result.rows.find(u => u.email === 'jinichirou.saitou@asahigroup-holdings.com');
-    if (specificUser) {
-      console.log(`[Admin] Found specific user in pending:`, specificUser);
-    } else {
-      const allSpecificUser = allUsers.rows.find(u => u.email === 'jinichirou.saitou@asahigroup-holdings.com');
-      if (allSpecificUser) {
-        console.log(`[Admin] Specific user exists but is_approved=${allSpecificUser.is_approved}:`, allSpecificUser);
-      } else {
-        console.log(`[Admin] Specific user not found in database at all`);
-      }
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Admin] Fetched ${result.rows.length} pending users`);
     }
     
     res.json({ users: result.rows });

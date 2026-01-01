@@ -3,7 +3,12 @@ const db = require('../db');
 
 async function updateUserPosition() {
   try {
-    const email = 'jinichirou.saitou@asahi-gh.com';
+    // 環境変数から管理者メールアドレスを取得（デフォルト値は設定しない）
+    const email = process.env.ADMIN_EMAIL;
+    if (!email) {
+      console.error('ADMIN_EMAIL environment variable is not set');
+      process.exit(1);
+    }
     const position = 'executor';
     
     console.log(`Updating position for ${email} to ${position}...`);

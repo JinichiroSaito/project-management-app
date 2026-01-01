@@ -23,22 +23,23 @@ steps:
     args:
       - '-c'
       - |
-        gcloud run jobs create db-migrate-prod-${SHORT_SHA} \
-          --image=asia-northeast1-docker.pkg.dev/${PROJECT_ID}/app-images/backend:${TAG_NAME} \
+        JOB_NAME="db-migrate-prod-$$(echo $${TAG_NAME} | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | cut -c1-50)"
+        gcloud run jobs create $${JOB_NAME} \
+          --image=asia-northeast1-docker.pkg.dev/$${PROJECT_ID}/app-images/backend:$${TAG_NAME} \
           --region=asia-northeast1 \
           --vpc-connector=vpc-connector \
-          --service-account=cloud-run-prod@${PROJECT_ID}.iam.gserviceaccount.com \
+          --service-account=cloud-run-prod@$${PROJECT_ID}.iam.gserviceaccount.com \
           --set-env-vars="DB_HOST=10.81.0.6,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user" \
           --set-secrets="DB_PASSWORD=db-password-prod:latest" \
           --command=node \
           --args=src/migrate.js \
           --max-retries=3 || true
         
-        gcloud run jobs execute db-migrate-prod-${SHORT_SHA} \
+        gcloud run jobs execute $${JOB_NAME} \
           --region=asia-northeast1 \
-          --wait
+          --wait || true
         
-        gcloud run jobs delete db-migrate-prod-${SHORT_SHA} \
+        gcloud run jobs delete $${JOB_NAME} \
           --region=asia-northeast1 \
           --quiet || true
 
@@ -53,8 +54,8 @@ steps:
       - '--allow-unauthenticated'
       - '--vpc-connector=vpc-connector'
       - '--service-account=cloud-run-prod@${PROJECT_ID}.iam.gserviceaccount.com'
-      - '--set-env-vars=DB_HOST=10.81.0.6,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user,NODE_ENV=production,GCS_BUCKET_NAME=pm-app-uploads-prod'
-      - '--set-secrets=DB_PASSWORD=db-password-prod:latest,FIREBASE_SERVICE_ACCOUNT=firebase-service-account-dev:latest,GEMINI_API_KEY=gemini-api-key-dev:latest'
+      - '--set-env-vars=DB_HOST=10.81.0.6,DB_PORT=5432,DB_NAME=pm_app,DB_USER=app_user,NODE_ENV=production,EMAIL_SERVICE=gmail,ADMIN_EMAIL=jinichirou.saitou@asahi-gh.com,APP_URL=https://frontend-prod-823277232006.asia-northeast1.run.app,FRONTEND_URL=https://frontend-prod-823277232006.asia-northeast1.run.app,GCS_BUCKET_NAME=pm-app-uploads-prod,GEMINI_MODEL_NAME=gemini-3.0-flash,USE_VERTEX_AI=true,VERTEX_AI_LOCATION=us-central1'
+      - '--set-secrets=DB_PASSWORD=db-password-prod:latest,FIREBASE_SERVICE_ACCOUNT=firebase-service-account-dev:latest,EMAIL_USER=email-user-dev:latest,EMAIL_APP_PASSWORD=email-app-password-dev:latest,GEMINI_API_KEY=gemini-api-key-dev:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY

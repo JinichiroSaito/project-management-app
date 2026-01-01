@@ -20,7 +20,10 @@ CREATE INDEX IF NOT EXISTS idx_users_is_approved ON users(is_approved);
 CREATE INDEX IF NOT EXISTS idx_users_is_admin ON users(is_admin);
 
 -- Insert initial admin user
-INSERT INTO users (firebase_uid, email, is_admin, is_approved, name)
-VALUES ('admin-initial', 'jinichirou.saitou@asahi-gh.com', TRUE, TRUE, 'Admin User')
-ON CONFLICT (email) DO UPDATE SET is_admin = TRUE, is_approved = TRUE;
+-- NOTE: 本番環境では、環境変数 ADMIN_EMAIL を使用して管理者ユーザーを作成してください
+-- このマイグレーションは開発環境用のデフォルト値です
+-- 本番環境では、管理者ユーザーは手動で作成するか、別のスクリプトで作成してください
+-- INSERT INTO users (firebase_uid, email, is_admin, is_approved, name)
+-- VALUES ('admin-initial', 'YOUR_ADMIN_EMAIL@example.com', TRUE, TRUE, 'Admin User')
+-- ON CONFLICT (email) DO UPDATE SET is_admin = TRUE, is_approved = TRUE;
 
