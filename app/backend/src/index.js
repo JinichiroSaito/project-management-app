@@ -4343,6 +4343,53 @@ app.get('/api/projects/:id/messages', authenticateToken, requireApproved, async 
   }
 });
 
+// デバッグ用エンドポイント: プロジェクトのreviewer_approvalsの生データを確認
+app.get('/api/debug/project/:id/reviewer-approvals', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const projectResult = await db.query('SELECT id, reviewer_approvals, application_status FROM projects WHERE id = $1', [id]);
+    if (projectResult.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    
+    const project = projectResult.rows[0];
+    const reviewersResult = await db.query(
+      'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
+      [id]
+    );
+    const reviewerIds = reviewersResult.rows.map(r => r.reviewer_id);
+    
+    const reviewerApprovals = project.reviewer_approvals || {};
+    const reviewerApprovalsKeys = Object.keys(reviewerApprovals);
+    
+    // 各審査者IDについて、数値キーと文字列キーの両方をチェック
+    const reviewerStatuses = reviewerIds.map(reviewerId => {
+      const stringKey = String(reviewerId);
+      const numericKey = reviewerId;
+      const approval = reviewerApprovals[stringKey] || reviewerApprovals[numericKey];
+      return {
+        reviewer_id: reviewerId,
+        string_key: stringKey,
+        numeric_key: numericKey,
+        approval: approval,
+        has_string_key: stringKey in reviewerApprovals,
+        has_numeric_key: numericKey in reviewerApprovals
+      };
+    });
+    
+    res.json({
+      project_id: id,
+      application_status: project.application_status,
+      reviewer_approvals_raw: reviewerApprovals,
+      reviewer_approvals_keys: reviewerApprovalsKeys,
+      reviewer_ids: reviewerIds,
+      reviewer_statuses: reviewerStatuses,
+      reviewer_approvals_type: typeof reviewerApprovals,
+      reviewer_approvals_stringified: JSON.stringify(reviewerApprovals)
+    });
+  } catch (error) {
+    return handleError(res, error, 'Debug Reviewer Approvals');
+  }
+});
+
 // 404ハンドラー
 app.use((req, res) => {
   res.status(404).json({
