@@ -575,8 +575,8 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
           );
         } else {
           // 最終決裁者の場合：すべての審査者が承認済みのプロジェクトを取得
-          // まず、最終決裁者として設定されているすべてのプロジェクトを取得
-          const allProjects = await db.query(
+          // まず、提出済みのすべてのプロジェクトを取得（final_approver_user_idが設定されていない可能性があるため）
+          const allSubmittedProjects = await db.query(
             `SELECT p.*, 
                     u1.name as executor_name, u1.email as executor_email,
                     u2.name as reviewer_name, u2.email as reviewer_email,
@@ -603,16 +603,26 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
            LEFT JOIN users u1 ON p.executor_id = u1.id
            LEFT JOIN users u2 ON p.reviewer_id = u2.id
            WHERE p.application_status = 'submitted'
-             AND p.final_approver_user_id = $1
-           ORDER BY p.created_at DESC`,
-            [userId]
+           ORDER BY p.created_at DESC`
           );
           
-          console.log('[Review Pending] Found projects for final approver:', allProjects.rows.length);
+          console.log('[Review Pending] Found all submitted projects:', allSubmittedProjects.rows.length);
+          
+          // 各プロジェクトに対してensureProjectRouteを呼び出して、final_approver_user_idを設定
+          const projectsWithRoute = [];
+          for (const project of allSubmittedProjects.rows) {
+            const projectWithRoute = await ensureProjectRoute(project);
+            projectsWithRoute.push(projectWithRoute);
+          }
+          
+          // 最終決裁者として設定されているプロジェクトをフィルタリング
+          const allProjects = projectsWithRoute.filter(p => p.final_approver_user_id === userId);
+          
+          console.log('[Review Pending] Found projects for final approver:', allProjects.length);
           
           // すべての審査者が承認済みのプロジェクトのみをフィルタリング
           const filteredProjects = [];
-          for (const project of allProjects.rows) {
+          for (const project of allProjects) {
             const reviewers = await db.query(
               'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
               [project.id]
@@ -3239,9 +3249,9 @@ app.get('/api/debug/review-pending', authenticateToken, requireApproved, async (
     
     const userId = currentUser.rows[0].id;
     
-    // 提出済みプロジェクトを取得
+    // 提出済みプロジェクトを取得（final_approver_user_idも含める）
     const submittedProjects = await db.query(
-      'SELECT id, name, application_status, reviewer_id FROM projects WHERE application_status = $1',
+      'SELECT id, name, application_status, reviewer_id, final_approver_user_id, requested_amount, reviewer_approvals FROM projects WHERE application_status = $1',
       ['submitted']
     );
     
@@ -3256,23 +3266,78 @@ app.get('/api/debug/review-pending', authenticateToken, requireApproved, async (
       console.warn('[Debug] project_reviewers table not found:', err.message);
     }
     
+    // approval_routesテーブルのデータを取得
+    let approvalRoutes = [];
+    try {
+      const routesResult = await db.query(
+        'SELECT * FROM approval_routes ORDER BY amount_threshold'
+      );
+      approvalRoutes = routesResult.rows;
+    } catch (err) {
+      console.warn('[Debug] approval_routes table not found:', err.message);
+    }
+    
+    // 現在のユーザーが最終決裁者として設定されているか確認
+    const finalApproverCheck = await db.query(
+      'SELECT COUNT(*) as count FROM approval_routes WHERE final_approver_user_id = $1',
+      [userId]
+    );
+    const isFinalApproverInRoutes = parseInt(finalApproverCheck.rows[0]?.count || 0) > 0;
+    
+    // 現在のユーザーが最終決裁者として設定されているプロジェクトを確認
+    const projectsWithCurrentUserAsFinalApprover = submittedProjects.rows.filter(p => 
+      p.final_approver_user_id === userId
+    );
+    
     // 現在のユーザーが審査者として割り当てられているプロジェクトを確認
     const assignedProjects = projectReviewers.filter(pr => pr.reviewer_id === userId);
     const projectsWithCurrentUserAsReviewer = submittedProjects.rows.filter(p => 
       p.reviewer_id === userId || assignedProjects.some(ap => ap.project_id === p.id)
     );
     
+    // 最終決裁者として表示されるべきプロジェクトを確認
+    let projectsReadyForFinalApproval = [];
+    for (const project of projectsWithCurrentUserAsFinalApprover) {
+      const reviewers = projectReviewers.filter(pr => pr.project_id === project.id);
+      if (reviewers.length === 0) continue;
+      
+      const approvals = project.reviewer_approvals || {};
+      const allApproved = reviewers.every((r) => {
+        const approval = approvals[r.reviewer_id];
+        return approval && approval.status === 'approved';
+      });
+      
+      if (allApproved) {
+        projectsReadyForFinalApproval.push({
+          ...project,
+          reviewers: reviewers,
+          allReviewersApproved: true
+        });
+      }
+    }
+    
     res.json({
       currentUser: {
         id: userId,
         email: currentUser.rows[0].email,
         name: currentUser.rows[0].name,
-        position: currentUser.rows[0].position
+        position: currentUser.rows[0].position,
+        isFinalApproverInRoutes: isFinalApproverInRoutes
       },
       submittedProjects: submittedProjects.rows,
       projectReviewers: projectReviewers,
+      approvalRoutes: approvalRoutes,
       assignedProjects: assignedProjects,
-      projectsWithCurrentUserAsReviewer: projectsWithCurrentUserAsReviewer
+      projectsWithCurrentUserAsReviewer: projectsWithCurrentUserAsReviewer,
+      projectsWithCurrentUserAsFinalApprover: projectsWithCurrentUserAsFinalApprover,
+      projectsReadyForFinalApproval: projectsReadyForFinalApproval,
+      summary: {
+        totalSubmittedProjects: submittedProjects.rows.length,
+        totalProjectReviewers: projectReviewers.length,
+        assignedAsReviewer: assignedProjects.length,
+        assignedAsFinalApprover: projectsWithCurrentUserAsFinalApprover.length,
+        readyForFinalApproval: projectsReadyForFinalApproval.length
+      }
     });
   } catch (error) {
     return handleError(res, error, 'Debug Review Pending');
