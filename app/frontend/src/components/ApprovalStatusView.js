@@ -138,27 +138,32 @@ const ApprovalStatusView = ({ projectId, onClose }) => {
           {reviewers.length > 0 ? (
             <div className="space-y-3">
               {reviewers.map((reviewer) => {
-                // reviewer_approvalsのキーは文字列として保存されている可能性があるため、両方を試す
+                // reviewer_approvalsのキーは数値または文字列として保存されている可能性があるため、両方を試す
                 const reviewerId = reviewer.id || reviewer.reviewer_id;
+                // 数値キーと文字列キーの両方を試す（JSONBでは数値キーがそのまま保存される場合がある）
                 const reviewerApproval = approvalStatus.reviewer_approvals?.[String(reviewerId)] || 
                                         approvalStatus.reviewer_approvals?.[reviewerId] ||
-                                        reviewer.review_comment ? { status: reviewer.status, review_comment: reviewer.review_comment, updated_at: reviewer.updated_at } : null;
+                                        approvalStatus.reviewer_approvals?.[Number(reviewerId)] ||
+                                        (reviewer.review_comment ? { status: reviewer.status, review_comment: reviewer.review_comment, updated_at: reviewer.updated_at } : null);
+                // reviewer.statusを優先し、次にreviewerApproval.statusを使用
                 const reviewerStatus = reviewer.status || reviewerApproval?.status || 'pending';
                 const isRejected = reviewerStatus === 'rejected';
                 const rejectionComment = reviewer.review_comment || reviewerApproval?.review_comment;
                 
-                // デバッグ用ログ
-                if (isRejected || reviewerApproval) {
-                  console.log('[ApprovalStatusView] Reviewer:', {
-                    id: reviewerId,
-                    name: reviewer.reviewer_name || reviewer.name,
-                    status: reviewerStatus,
-                    isRejected,
-                    reviewerApproval,
-                    rejectionComment,
-                    reviewer_approvals_keys: Object.keys(approvalStatus.reviewer_approvals || {})
-                  });
-                }
+                // デバッグ用ログ（すべての審査者について）
+                console.log('[ApprovalStatusView] Reviewer:', {
+                  reviewerId,
+                  reviewerIdString: String(reviewerId),
+                  reviewerIdNumber: Number(reviewerId),
+                  name: reviewer.reviewer_name || reviewer.name,
+                  reviewer_status: reviewer.status,
+                  reviewerApproval,
+                  finalStatus: reviewerStatus,
+                  isRejected,
+                  rejectionComment,
+                  reviewer_approvals_keys: Object.keys(approvalStatus.reviewer_approvals || {}),
+                  reviewer_approvals_values: Object.values(approvalStatus.reviewer_approvals || {})
+                });
                 
                 return (
                   <div key={reviewer.id || reviewer.reviewer_id} className={`p-3 border rounded-lg ${isRejected ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}>
