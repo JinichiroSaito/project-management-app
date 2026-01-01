@@ -17,6 +17,8 @@ const ReviewDashboard = () => {
 
   const [debugInfo, setDebugInfo] = useState(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [expandedAnalysis, setExpandedAnalysis] = useState({});
+  const [recheckLoading, setRecheckLoading] = useState({});
 
   useEffect(() => {
     fetchPendingReviews();
@@ -99,6 +101,52 @@ const ReviewDashboard = () => {
     if (numAmount < 100000000) return 'under_100m';
     if (numAmount < 500000000) return '100m_to_500m';
     return 'over_500m';
+  };
+
+  const recheckAnalysis = async (project) => {
+    if (!project?.id) return;
+    setRecheckLoading((prev) => ({ ...prev, [project.id]: true }));
+    try {
+      const response = await api.post(`/api/projects/${project.id}/check-missing-sections`, {
+        language
+      });
+      const newAnalysis = response.data?.analysis;
+      if (newAnalysis) {
+        // pending側のリストを更新
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === project.id
+              ? {
+                  ...p,
+                  missing_sections: newAnalysis,
+                  missing_sections_updated_at: new Date().toISOString()
+                }
+              : p
+          )
+        );
+        // approved側も更新
+        setApprovedProjects((prev) =>
+          prev.map((p) =>
+            p.id === project.id
+              ? {
+                  ...p,
+                  missing_sections: newAnalysis,
+                  missing_sections_updated_at: new Date().toISOString()
+                }
+              : p
+          )
+        );
+      }
+    } catch (error) {
+      console.error('[ReviewDashboard] Re-check analysis failed:', error);
+      setError(
+        error.response?.data?.error ||
+          error.message ||
+          t('projectApplication.error.checkSections', 'Failed to check missing sections')
+      );
+    } finally {
+      setRecheckLoading((prev) => ({ ...prev, [project.id]: false }));
+    }
   };
 
   if (loading) {
@@ -294,6 +342,40 @@ const ReviewDashboard = () => {
                   <h4 className="text-sm font-medium text-gray-900 mb-3">
                     {t('projectApplication.analysis.title', 'Document Analysis')}
                   </h4>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-gray-600">
+                      {t('review.analysis.updatedAt', 'Updated')}{' '}
+                      {project.missing_sections_updated_at ? new Date(project.missing_sections_updated_at).toLocaleString() : t('review.analysis.unknown', 'Unknown')}
+                    </span>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                        onClick={() =>
+                          setExpandedAnalysis((prev) => ({
+                            ...prev,
+                            [project.id]: !prev[project.id]
+                          }))
+                        }
+                      >
+                        {expandedAnalysis[project.id]
+                          ? t('review.analysis.hideDetails', 'Hide details')
+                          : t('review.analysis.showDetails', 'Show details')}
+                      </button>
+                      <button
+                        disabled={recheckLoading[project.id]}
+                        onClick={() => recheckAnalysis(project)}
+                        className={`text-xs px-2 py-1 rounded border ${
+                          recheckLoading[project.id]
+                            ? 'bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed'
+                            : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'
+                        }`}
+                      >
+                        {recheckLoading[project.id]
+                          ? t('review.analysis.rechecking', 'Rechecking...')
+                          : t('review.analysis.rerun', 'Re-run in current language')}
+                      </button>
+                    </div>
+                  </div>
                   
                   {missingSections.completeness_score !== undefined && (
                     <div className="mb-3">
@@ -328,7 +410,9 @@ const ReviewDashboard = () => {
                         {t('projectApplication.analysis.categoryScores', 'Category Scores')}
                       </h5>
                       <div className="grid grid-cols-2 gap-2">
-                        {Object.entries(missingSections.category_scores).slice(0, 6).map(([category, score]) => (
+                        {Object.entries(missingSections.category_scores)
+                          .slice(0, expandedAnalysis[project.id] ? undefined : 6)
+                          .map(([category, score]) => (
                           <div key={category} className="text-xs">
                             <div className="flex justify-between items-center mb-1">
                               <span className="text-gray-600 truncate">{category}</span>
@@ -362,14 +446,14 @@ const ReviewDashboard = () => {
                         {t('projectApplication.analysis.missingSections', 'Missing Sections')}: {missingSections.missing_sections.length}
                       </h5>
                       <ul className="text-xs text-yellow-800 space-y-1">
-                        {missingSections.missing_sections.slice(0, 3).map((section, index) => (
+                        {missingSections.missing_sections.slice(0, expandedAnalysis[project.id] ? undefined : 3).map((section, index) => (
                           <li key={index}>
                             {section.section_number}. {t(`projectApplication.sectionName.${section.section_name}`, section.section_name)}
                             {section.is_missing && <span className="text-red-600 ml-1">({t('projectApplication.analysis.missing', 'Missing')})</span>}
                             {section.is_incomplete && <span className="text-orange-600 ml-1">({t('projectApplication.analysis.incomplete', 'Incomplete')})</span>}
                           </li>
                         ))}
-                        {missingSections.missing_sections.length > 3 && (
+                        {!expandedAnalysis[project.id] && missingSections.missing_sections.length > 3 && (
                           <li className="text-gray-600">{t('projectApplication.analysis.others', '...and {count} more', { count: missingSections.missing_sections.length - 3 })}</li>
                         )}
                       </ul>
@@ -382,10 +466,10 @@ const ReviewDashboard = () => {
                         {t('projectApplication.analysis.criticalIssues', 'Critical Issues')}
                       </h5>
                       <ul className="text-xs text-red-800 space-y-1">
-                        {missingSections.critical_issues.slice(0, 2).map((issue, index) => (
+                        {missingSections.critical_issues.slice(0, expandedAnalysis[project.id] ? undefined : 2).map((issue, index) => (
                           <li key={index} className="list-disc list-inside">{issue}</li>
                         ))}
-                        {missingSections.critical_issues.length > 2 && (
+                        {!expandedAnalysis[project.id] && missingSections.critical_issues.length > 2 && (
                           <li className="text-gray-600">{t('projectApplication.analysis.others', '...and {count} more', { count: missingSections.critical_issues.length - 2 })}</li>
                         )}
                       </ul>
@@ -398,13 +482,24 @@ const ReviewDashboard = () => {
                         {t('projectApplication.analysis.strengths', 'Strengths')}
                       </h5>
                       <ul className="text-xs text-green-800 space-y-1">
-                        {missingSections.strengths.slice(0, 2).map((strength, index) => (
+                        {missingSections.strengths.slice(0, expandedAnalysis[project.id] ? undefined : 2).map((strength, index) => (
                           <li key={index} className="list-disc list-inside">{strength}</li>
                         ))}
-                        {missingSections.strengths.length > 2 && (
+                        {!expandedAnalysis[project.id] && missingSections.strengths.length > 2 && (
                           <li className="text-gray-600">{t('projectApplication.analysis.others', '...and {count} more', { count: missingSections.strengths.length - 2 })}</li>
                         )}
                       </ul>
+                    </div>
+                  )}
+
+                  {expandedAnalysis[project.id] && project.extracted_text && (
+                    <div className="mt-3 p-2 bg-white rounded border border-gray-200">
+                      <h5 className="text-xs font-medium text-gray-800 mb-1">
+                        {t('projectApplication.analysis.fullText', 'Full extracted text:')}
+                      </h5>
+                      <pre className="text-xs text-gray-700 whitespace-pre-wrap max-h-48 overflow-auto bg-gray-50 p-2 rounded">
+                        {project.extracted_text}
+                      </pre>
                     </div>
                   )}
                 </div>

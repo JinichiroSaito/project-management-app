@@ -365,6 +365,12 @@ export const translations = {
     'projectApplication.error.extractText': 'Failed to extract text',
     'projectApplication.error.checkSections': 'Failed to check missing sections',
     'projectApplication.error.noAnalysisResult': 'Analysis completed but no results were returned',
+    'review.analysis.showDetails': 'Show details',
+    'review.analysis.hideDetails': 'Hide details',
+    'review.analysis.updatedAt': 'Updated',
+    'review.analysis.unknown': 'Unknown',
+    'review.analysis.rerun': 'Re-run in current language',
+    'review.analysis.rechecking': 'Rechecking...',
     
     // Business Advisor Chat
     'chat.title': 'Business Advisor',
@@ -774,6 +780,12 @@ export const translations = {
     'projectApplication.error.extractText': 'テキストの抽出に失敗しました',
     'projectApplication.error.checkSections': '不足セクションのチェックに失敗しました',
     'projectApplication.error.noAnalysisResult': '分析は完了しましたが、結果が返されませんでした',
+    'review.analysis.showDetails': '詳細を表示',
+    'review.analysis.hideDetails': '詳細を非表示',
+    'review.analysis.updatedAt': '更新日時',
+    'review.analysis.unknown': '不明',
+    'review.analysis.rerun': '現在の言語で再評価',
+    'review.analysis.rechecking': '再評価中...',
     
     // Business Advisor Chat
     'chat.title': 'ビジネスアドバイザー',

@@ -3202,7 +3202,7 @@ app.post('/api/projects/:id/check-missing-sections', authenticateToken, requireA
       });
     }
     
-    // 現在のユーザーが実行者または管理者か確認
+    // 現在のユーザーが実行者・審査者・管理者か確認
     const currentUser = await db.query(
       'SELECT id, position FROM users WHERE email = $1',
       [req.user.email]
@@ -3212,10 +3212,18 @@ app.post('/api/projects/:id/check-missing-sections', authenticateToken, requireA
       return res.status(404).json({ error: 'User not found' });
     }
     
+    // 複数審査者を取得
+    const projectReviewers = await db.query(
+      'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
+      [id]
+    ).catch(() => ({ rows: [] }));
+    const reviewerIds = projectReviewers.rows.map(r => r.reviewer_id);
+    
     const isExecutor = projectData.executor_id === currentUser.rows[0].id;
+    const isReviewer = reviewerIds.includes(currentUser.rows[0].id);
     const isAdmin = currentUser.rows[0].position === 'admin';
     
-    if (!isExecutor && !isAdmin) {
+    if (!isExecutor && !isReviewer && !isAdmin) {
       return res.status(403).json({ error: 'You do not have permission to check missing sections for this project' });
     }
     
