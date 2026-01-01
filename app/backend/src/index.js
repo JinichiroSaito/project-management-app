@@ -907,8 +907,32 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     const userIdKey = String(userId);
     
     // 既に承認または却下済みの場合はエラーを返す（数値キーと文字列キーの両方をチェック）
-    const existingApproval = currentApprovals[userIdKey] || currentApprovals[userId];
+    // すべてのキーをチェック（数値、文字列、Number()変換）
+    const allKeys = Object.keys(currentApprovals);
+    const existingApproval = currentApprovals[userIdKey] || 
+                            currentApprovals[userId] || 
+                            currentApprovals[Number(userId)] ||
+                            (allKeys.find(key => Number(key) === userId) ? currentApprovals[allKeys.find(key => Number(key) === userId)] : null);
+    
+    console.log('[Reviewer Approve] Checking existing approval:', {
+      userId,
+      userIdKey,
+      allKeys,
+      existingApproval,
+      currentApprovals
+    });
+    
     if (existingApproval && existingApproval.status) {
+      // 既に却下済みの場合、最新の状態を返す（エラーではなく成功として扱う）
+      if (existingApproval.status === 'rejected' && finalDecision === 'rejected') {
+        console.log('[Reviewer Approve] Already rejected, returning current state');
+        return res.json({ 
+          success: true, 
+          reviewer_approvals: currentApprovals,
+          message: 'Already rejected (returning current state)'
+        });
+      }
+      // 承認済みの場合はエラー
       return res.status(400).json({ 
         error: `You have already ${existingApproval.status === 'approved' ? 'approved' : 'rejected'} this project`,
         reviewer_approvals: currentApprovals
