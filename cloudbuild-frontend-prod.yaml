@@ -8,7 +8,7 @@ steps:
       - '-t'
       - 'asia-northeast1-docker.pkg.dev/${PROJECT_ID}/app-images/frontend:prod-latest'
       - '--build-arg'
-      - 'REACT_APP_API_URL=https://app-prod-823277232006.asia-northeast1.run.app'
+      - 'REACT_APP_API_URL=https://app-prod-lerydx77wa-an.a.run.app'
       - '--build-arg'
       - 'REACT_APP_FIREBASE_API_KEY=${_FIREBASE_API_KEY}'
       - '--build-arg'
