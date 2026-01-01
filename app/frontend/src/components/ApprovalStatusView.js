@@ -135,9 +135,14 @@ const ApprovalStatusView = ({ projectId, onClose }) => {
           {reviewers.length > 0 ? (
             <div className="space-y-3">
               {reviewers.map((reviewer) => {
-                const reviewerApproval = approvalStatus.reviewer_approvals?.[reviewer.id] || approvalStatus.reviewer_approvals?.[reviewer.reviewer_id];
-                const isRejected = reviewerApproval?.status === 'rejected';
-                const rejectionComment = reviewerApproval?.review_comment;
+                // reviewer_approvalsのキーは文字列として保存されている可能性があるため、両方を試す
+                const reviewerId = reviewer.id || reviewer.reviewer_id;
+                const reviewerApproval = approvalStatus.reviewer_approvals?.[String(reviewerId)] || 
+                                        approvalStatus.reviewer_approvals?.[reviewerId] ||
+                                        reviewer.review_comment ? { status: reviewer.status, review_comment: reviewer.review_comment, updated_at: reviewer.updated_at } : null;
+                const reviewerStatus = reviewer.status || reviewerApproval?.status || 'pending';
+                const isRejected = reviewerStatus === 'rejected';
+                const rejectionComment = reviewer.review_comment || reviewerApproval?.review_comment;
                 
                 return (
                   <div key={reviewer.id || reviewer.reviewer_id} className={`p-3 border rounded-lg ${isRejected ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}>
@@ -147,14 +152,14 @@ const ApprovalStatusView = ({ projectId, onClose }) => {
                         {(reviewer.reviewer_email || reviewer.email) && (reviewer.reviewer_name || reviewer.name) && (
                           <div className="text-sm text-gray-500">{reviewer.reviewer_email || reviewer.email}</div>
                         )}
-                        {reviewerApproval?.updated_at && (
+                        {(reviewer.updated_at || reviewerApproval?.updated_at) && (
                           <div className="text-xs text-gray-400 mt-1">
-                            更新: {new Date(reviewerApproval.updated_at).toLocaleString('ja-JP')}
+                            更新: {new Date(reviewer.updated_at || reviewerApproval.updated_at).toLocaleString('ja-JP')}
                           </div>
                         )}
                       </div>
                       <div className="ml-4">
-                        {getStatusBadge(reviewer.status || reviewerApproval?.status || 'pending')}
+                        {getStatusBadge(reviewerStatus)}
                       </div>
                     </div>
                     {isRejected && rejectionComment && (

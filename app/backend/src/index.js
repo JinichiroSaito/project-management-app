@@ -798,7 +798,8 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
     // 審査状況の詳細を計算
     const reviewerApprovals = projectWithRoute.reviewer_approvals || {};
     const reviewerStatuses = reviewers.rows.map(reviewer => {
-      const approval = reviewerApprovals[reviewer.id];
+      // reviewer_approvalsのキーは文字列として保存されている可能性があるため、両方を試す
+      const approval = reviewerApprovals[String(reviewer.id)] || reviewerApprovals[reviewer.id] || null;
       return {
         id: reviewer.id, // フロントエンドが期待する形式
         reviewer_id: reviewer.id, // 後方互換性のため
@@ -807,13 +808,15 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
         email: reviewer.email, // フロントエンドが期待する形式
         reviewer_email: reviewer.email, // 後方互換性のため
         status: approval?.status || 'pending',
-        updated_at: approval?.updated_at || null
+        updated_at: approval?.updated_at || null,
+        review_comment: approval?.review_comment || null // 却下コメントも含める
       };
     });
 
     // 全体の審査状況を計算
     const totalReviewers = reviewers.rows.length;
     const approvedCount = Object.values(reviewerApprovals).filter(a => a?.status === 'approved').length;
+    const rejectedCount = Object.values(reviewerApprovals).filter(a => a?.status === 'rejected').length;
     const allReviewersApproved = totalReviewers > 0 && approvedCount === totalReviewers;
     const canProceedToFinalApproval = allReviewersApproved && projectWithRoute.final_approver_user_id;
 
@@ -835,7 +838,8 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
       approval_summary: {
         total_reviewers: totalReviewers,
         approved_count: approvedCount,
-        pending_count: totalReviewers - approvedCount,
+        rejected_count: rejectedCount,
+        pending_count: totalReviewers - approvedCount - rejectedCount,
         all_reviewers_approved: allReviewersApproved,
         can_proceed_to_final_approval: canProceedToFinalApproval
       }
