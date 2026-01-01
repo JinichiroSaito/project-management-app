@@ -487,41 +487,39 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
     const userId = currentUser.rows[0].id;
     const isReviewer = currentUser.rows[0].position === 'reviewer';
     
+    // 最終決裁者としてのアクセスを確認（approval_routesテーブルでfinal_approver_user_idが設定されているか）
+    const finalApproverCheck = await db.query(
+      'SELECT COUNT(*) as count FROM approval_routes WHERE final_approver_user_id = $1',
+      [userId]
+    );
+    
+    const isFinalApprover = parseInt(finalApproverCheck.rows[0]?.count || 0) > 0;
+    
+    // 念のため、プロジェクトでfinal_approver_user_idが設定されているかも確認
+    const projectCheck = await db.query(
+      'SELECT COUNT(*) as count FROM projects WHERE final_approver_user_id = $1',
+      [userId]
+    );
+    const projectCount = parseInt(projectCheck.rows[0]?.count || 0);
+    
     // 審査者または最終決裁者であることを確認
-    if (!isReviewer) {
-      // 最終決裁者としてのアクセスを確認（approval_routesテーブルでfinal_approver_user_idが設定されているか）
-      const finalApproverCheck = await db.query(
-        'SELECT COUNT(*) as count FROM approval_routes WHERE final_approver_user_id = $1',
-        [userId]
-      );
-      
-      const isFinalApprover = parseInt(finalApproverCheck.rows[0]?.count || 0) > 0;
-      
-      // 念のため、プロジェクトでfinal_approver_user_idが設定されているかも確認
-      const projectCheck = await db.query(
-        'SELECT COUNT(*) as count FROM projects WHERE final_approver_user_id = $1',
-        [userId]
-      );
-      const projectCount = parseInt(projectCheck.rows[0]?.count || 0);
-      
-      if (!isFinalApprover && projectCount === 0) {
-        return res.status(403).json({ error: 'Only reviewers or final approvers can access this endpoint' });
-      }
-      
-      console.log('[Review Pending] Final approver access confirmed:', {
-        userId: userId,
-        email: req.user.email,
-        isFinalApprover: isFinalApprover,
-        projectCount: projectCount
-      });
+    if (!isReviewer && !isFinalApprover && projectCount === 0) {
+      return res.status(403).json({ error: 'Only reviewers or final approvers can access this endpoint' });
     }
+    
+    console.log('[Review Pending] User access check:', {
+      userId: userId,
+      email: req.user.email,
+      isReviewer: isReviewer,
+      isFinalApprover: isFinalApprover,
+      projectCount: projectCount
+    });
     
     let result;
     try {
       // 新しいカラムが存在する場合のクエリ（複数の審査者を含む）
       // 複数の審査者のいずれかが現在のユーザーであるプロジェクトを取得
-      const userId = currentUser.rows[0].id;
-      console.log('[Review Pending] Fetching projects for reviewer:', { userId, email: req.user.email });
+      console.log('[Review Pending] Fetching projects:', { userId, email: req.user.email, isReviewer, isFinalApprover });
       
       // まず、project_reviewersテーブルにデータが存在するか確認
       const hasProjectReviewersTable = await db.query(
@@ -534,46 +532,8 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
       
       if (hasProjectReviewersTable.rows[0]?.exists) {
         // project_reviewersテーブルが存在する場合
-        if (isReviewer) {
-          // 審査者の場合：現在のユーザーが審査者として割り当てられているプロジェクトを取得
-          result = await db.query(
-            `SELECT p.*, 
-                    u1.name as executor_name, u1.email as executor_email,
-                    u2.name as reviewer_name, u2.email as reviewer_email,
-                    p.extracted_text,
-                    p.extracted_text_updated_at,
-                    p.missing_sections,
-                    p.missing_sections_updated_at,
-                    COALESCE(
-                      (
-                        SELECT json_agg(
-                          json_build_object(
-                            'id', u3.id,
-                            'name', u3.name,
-                            'email', u3.email
-                          )
-                        )
-                        FROM project_reviewers pr2
-                        LEFT JOIN users u3 ON pr2.reviewer_id = u3.id
-                        WHERE pr2.project_id = p.id
-                      ),
-                      '[]'::json
-                    ) as reviewers
-           FROM projects p
-           LEFT JOIN users u1 ON p.executor_id = u1.id
-           LEFT JOIN users u2 ON p.reviewer_id = u2.id
-             WHERE p.application_status = 'submitted'
-               AND (
-                 p.reviewer_id = $1 
-                 OR EXISTS (
-                   SELECT 1 FROM project_reviewers pr 
-                   WHERE pr.project_id = p.id AND pr.reviewer_id = $1
-                 )
-               )
-           ORDER BY p.created_at DESC`,
-            [userId]
-          );
-        } else {
+        // 最終決裁者の場合は最終決裁者向けのロジックを優先（positionがreviewerでも最終決裁者なら最終決裁者向けロジックを実行）
+        if (isFinalApprover || projectCount > 0) {
           // 最終決裁者の場合：すべての審査者が承認済みのプロジェクトを取得
           // まず、提出済みのすべてのプロジェクトを取得（final_approver_user_idが設定されていない可能性があるため）
           const allSubmittedProjects = await db.query(
@@ -691,6 +651,45 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
           
           console.log('[Review Pending] Filtered projects (all reviewers approved):', filteredProjects.length);
           result = { rows: filteredProjects };
+        } else if (isReviewer) {
+          // 審査者の場合：現在のユーザーが審査者として割り当てられているプロジェクトを取得
+          result = await db.query(
+            `SELECT p.*, 
+                    u1.name as executor_name, u1.email as executor_email,
+                    u2.name as reviewer_name, u2.email as reviewer_email,
+                    p.extracted_text,
+                    p.extracted_text_updated_at,
+                    p.missing_sections,
+                    p.missing_sections_updated_at,
+                    COALESCE(
+                      (
+                        SELECT json_agg(
+                          json_build_object(
+                            'id', u3.id,
+                            'name', u3.name,
+                            'email', u3.email
+                          )
+                        )
+                        FROM project_reviewers pr2
+                        LEFT JOIN users u3 ON pr2.reviewer_id = u3.id
+                        WHERE pr2.project_id = p.id
+                      ),
+                      '[]'::json
+                    ) as reviewers
+           FROM projects p
+           LEFT JOIN users u1 ON p.executor_id = u1.id
+           LEFT JOIN users u2 ON p.reviewer_id = u2.id
+             WHERE p.application_status = 'submitted'
+               AND (
+                 p.reviewer_id = $1 
+                 OR EXISTS (
+                   SELECT 1 FROM project_reviewers pr 
+                   WHERE pr.project_id = p.id AND pr.reviewer_id = $1
+                 )
+               )
+           ORDER BY p.created_at DESC`,
+            [userId]
+          );
         }
       } else {
         // project_reviewersテーブルが存在しない場合（後方互換性）
