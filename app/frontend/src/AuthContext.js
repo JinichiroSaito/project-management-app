@@ -31,14 +31,30 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
+      console.log('[AuthContext] Fetching user info for:', firebaseUser.email);
       const token = await firebaseUser.getIdToken();
+      console.log('[AuthContext] Got token, calling /api/auth/me');
+      
+      // API呼び出しにタイムアウトを設定
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
       const response = await api.get('/api/auth/me', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+        timeout: 5000
       });
+      
+      clearTimeout(timeoutId);
+      console.log('[AuthContext] User info received:', response.data.user);
       setUserInfo(response.data.user);
       return response.data.user;
     } catch (error) {
-      console.error('Error fetching user info:', error);
+      if (error.name === 'AbortError' || error.code === 'ECONNABORTED') {
+        console.error('[AuthContext] Timeout fetching user info');
+      } else {
+        console.error('[AuthContext] Error fetching user info:', error);
+      }
       setUserInfo(null);
       return null;
     }
@@ -46,40 +62,75 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     let isMounted = true;
+    let loadingResolved = false;
     
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (!isMounted) return;
-      
-      setUser(firebaseUser);
-      if (firebaseUser) {
-        try {
-          await fetchUserInfo(firebaseUser);
-        } catch (error) {
-          console.error('[AuthContext] Error fetching user info:', error);
-          // エラーが発生してもローディングを解除
-        }
-      } else {
-        setUserInfo(null);
-      }
-      
-      if (isMounted) {
+    const resolveLoading = () => {
+      if (isMounted && !loadingResolved) {
+        loadingResolved = true;
+        console.log('[AuthContext] Resolving loading state');
         setLoading(false);
       }
-    });
-
-    // タイムアウト設定（10秒後に強制的にローディングを解除）
-    const timeoutId = setTimeout(() => {
-      if (isMounted) {
-        console.warn('[AuthContext] Auth state change timeout, setting loading to false');
-        setLoading(false);
-      }
-    }, 10000);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(timeoutId);
-      unsubscribe();
     };
+    
+    console.log('[AuthContext] Setting up auth state listener');
+    
+    // Firebase認証の初期化を確認
+    try {
+      const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        if (!isMounted) return;
+        
+        console.log('[AuthContext] Auth state changed:', firebaseUser ? firebaseUser.email : 'no user');
+        
+        setUser(firebaseUser);
+        if (firebaseUser) {
+          try {
+            // fetchUserInfoにタイムアウトを設定
+            const fetchPromise = fetchUserInfo(firebaseUser);
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Fetch user info timeout')), 5000)
+            );
+            
+            await Promise.race([fetchPromise, timeoutPromise]);
+            console.log('[AuthContext] User info fetched successfully');
+          } catch (error) {
+            console.error('[AuthContext] Error fetching user info:', error);
+            // エラーが発生してもローディングを解除
+          }
+        } else {
+          setUserInfo(null);
+          console.log('[AuthContext] No user, setting userInfo to null');
+        }
+        
+        resolveLoading();
+      }, (error) => {
+        // 認証エラーが発生した場合
+        console.error('[AuthContext] Auth state change error:', error);
+        if (isMounted) {
+          setUser(null);
+          setUserInfo(null);
+          resolveLoading();
+        }
+      });
+
+      // タイムアウト設定（10秒後に強制的にローディングを解除）
+      const timeoutId = setTimeout(() => {
+        console.warn('[AuthContext] Auth state change timeout, setting loading to false');
+        resolveLoading();
+      }, 10000);
+
+      return () => {
+        isMounted = false;
+        clearTimeout(timeoutId);
+        unsubscribe();
+      };
+    } catch (error) {
+      console.error('[AuthContext] Error setting up auth state listener:', error);
+      // エラーが発生してもローディングを解除
+      resolveLoading();
+      return () => {
+        isMounted = false;
+      };
+    }
   }, []);
 
   const login = async (email, password) => {
