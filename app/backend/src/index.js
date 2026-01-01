@@ -1741,10 +1741,58 @@ app.delete('/api/projects/:id', authenticateToken, requireApproved, async (req, 
 // Auth endpoint - Get current user info
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
-    const result = await db.query(
-      'SELECT id, email, is_admin, is_approved, company, department, position, name, created_at FROM users WHERE email = $1',
+    // まずemailで検索
+    let result = await db.query(
+      'SELECT id, email, firebase_uid, is_admin, is_approved, company, department, position, name, created_at FROM users WHERE email = $1',
       [req.user.email]
     );
+    
+    // emailで見つからない場合、firebase_uidで検索（既存のプロフィール情報と紐付けるため）
+    if (result.rows.length === 0) {
+      result = await db.query(
+        'SELECT id, email, firebase_uid, is_admin, is_approved, company, department, position, name, created_at FROM users WHERE firebase_uid = $1',
+        [req.user.uid]
+      );
+      
+      // firebase_uidで見つかった場合、emailを更新して紐付ける
+      if (result.rows.length > 0) {
+        const existingUser = result.rows[0];
+        // emailが異なる場合、現在のFirebase emailで更新
+        if (existingUser.email !== req.user.email) {
+          await db.query(
+            'UPDATE users SET email = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+            [req.user.email, existingUser.id]
+          );
+          // 更新後の情報を再取得
+          result = await db.query(
+            'SELECT id, email, firebase_uid, is_admin, is_approved, company, department, position, name, created_at FROM users WHERE id = $1',
+            [existingUser.id]
+          );
+        }
+        // firebase_uidが設定されていない場合、設定する
+        if (!existingUser.firebase_uid || existingUser.firebase_uid !== req.user.uid) {
+          await db.query(
+            'UPDATE users SET firebase_uid = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+            [req.user.uid, existingUser.id]
+          );
+        }
+      }
+    } else {
+      // emailで見つかった場合、firebase_uidが一致しているか確認
+      const foundUser = result.rows[0];
+      if (!foundUser.firebase_uid || foundUser.firebase_uid !== req.user.uid) {
+        // firebase_uidが設定されていない、または異なる場合、更新する
+        await db.query(
+          'UPDATE users SET firebase_uid = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+          [req.user.uid, foundUser.id]
+        );
+        // 更新後の情報を再取得
+        result = await db.query(
+          'SELECT id, email, firebase_uid, is_admin, is_approved, company, department, position, name, created_at FROM users WHERE id = $1',
+          [foundUser.id]
+        );
+      }
+    }
     
     if (result.rows.length === 0) {
       return res.json({
