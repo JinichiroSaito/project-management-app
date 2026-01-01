@@ -1754,26 +1754,20 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
         [req.user.uid]
       );
       
-      // firebase_uidで見つかった場合、emailを更新して紐付ける
+      // firebase_uidで見つかった場合、emailとfirebase_uidを更新して紐付ける
       if (result.rows.length > 0) {
         const existingUser = result.rows[0];
-        // emailが異なる場合、現在のFirebase emailで更新
-        if (existingUser.email !== req.user.email) {
+        // emailまたはfirebase_uidが異なる場合、更新する
+        const needsUpdate = existingUser.email !== req.user.email || !existingUser.firebase_uid || existingUser.firebase_uid !== req.user.uid;
+        if (needsUpdate) {
           await db.query(
-            'UPDATE users SET email = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-            [req.user.email, existingUser.id]
+            'UPDATE users SET email = $1, firebase_uid = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+            [req.user.email, req.user.uid, existingUser.id]
           );
-          // 更新後の情報を再取得
+          // 更新後の情報を再取得（必ず最新のデータを取得）
           result = await db.query(
             'SELECT id, email, firebase_uid, is_admin, is_approved, company, department, position, name, created_at FROM users WHERE id = $1',
             [existingUser.id]
-          );
-        }
-        // firebase_uidが設定されていない場合、設定する
-        if (!existingUser.firebase_uid || existingUser.firebase_uid !== req.user.uid) {
-          await db.query(
-            'UPDATE users SET firebase_uid = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-            [req.user.uid, existingUser.id]
           );
         }
       }
@@ -1786,7 +1780,7 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
           'UPDATE users SET firebase_uid = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
           [req.user.uid, foundUser.id]
         );
-        // 更新後の情報を再取得
+        // 更新後の情報を再取得（必ず最新のデータを取得）
         result = await db.query(
           'SELECT id, email, firebase_uid, is_admin, is_approved, company, department, position, name, created_at FROM users WHERE id = $1',
           [foundUser.id]
