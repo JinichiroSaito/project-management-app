@@ -16,6 +16,11 @@ const ProjectList = () => {
   const [selectedProjectForKpi, setSelectedProjectForKpi] = useState(null);
   const [selectedProjectForBudget, setSelectedProjectForBudget] = useState(null);
   const [selectedProjectForApprovalStatus, setSelectedProjectForApprovalStatus] = useState(null);
+  const [selectedProjectForRejection, setSelectedProjectForRejection] = useState(null); // 却下されたプロジェクトの詳細表示
+  const [rejectionDetails, setRejectionDetails] = useState({}); // プロジェクトごとの却下詳細情報
+  const [additionalFile, setAdditionalFile] = useState({}); // プロジェクトごとの追加ファイル
+  const [executorMessage, setExecutorMessage] = useState({}); // プロジェクトごとの実行者メッセージ
+  const [uploadingFile, setUploadingFile] = useState({}); // ファイルアップロード中かどうか
   const { user, userInfo } = useAuth();
   const { t, language } = useLanguage();
   
@@ -75,6 +80,23 @@ const ProjectList = () => {
       }
       
       setProjects(projectsList);
+      
+      // 却下されたプロジェクトの詳細情報を取得
+      const rejectionDetailsMap = {};
+      await Promise.all(
+        projectsList
+          .filter(p => p.application_status === 'rejected' || (p.reviewer_approvals && Object.values(p.reviewer_approvals).some(a => a && a.status === 'rejected')))
+          .map(async (p) => {
+            try {
+              const statusResponse = await api.get(`/api/projects/${p.id}/approval-status`);
+              rejectionDetailsMap[p.id] = statusResponse.data;
+            } catch (err) {
+              console.warn('Failed to fetch rejection details for project', p.id, err);
+            }
+          })
+      );
+      setRejectionDetails(rejectionDetailsMap);
+      
       setLoading(false);
       
       if (projectsList.length === 0) {
@@ -480,6 +502,15 @@ const ProjectList = () => {
                       {selectedProjectForApprovalStatus?.id === project.id ? '審査状況を閉じる' : '審査状況を確認'}
                     </button>
                   )}
+                  {/* 却下されたプロジェクトの詳細表示ボタン */}
+                  {(project.application_status === 'rejected' || (project.reviewer_approvals && Object.values(project.reviewer_approvals).some(a => a && a.status === 'rejected'))) && (
+                    <button
+                      onClick={() => setSelectedProjectForRejection(selectedProjectForRejection?.id === project.id ? null : project)}
+                      className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md"
+                    >
+                      {selectedProjectForRejection?.id === project.id ? '却下詳細を閉じる' : '却下詳細を確認'}
+                    </button>
+                  )}
                   {project.application_status === 'draft' && (
                     <>
                       <button
@@ -558,6 +589,69 @@ const ProjectList = () => {
                     <ProjectBudgetManagement project={selectedProjectForBudget} />
                   </div>
                 )}
+                {/* 却下情報の表示 */}
+                {selectedProjectForRejection?.id === project.id && (
+                  <RejectionDetailsSection
+                    project={project}
+                    rejectionDetails={rejectionDetails[project.id]}
+                    additionalFile={additionalFile[project.id]}
+                    executorMessage={executorMessage[project.id]}
+                    uploadingFile={uploadingFile[project.id]}
+                    onFileChange={(file) => setAdditionalFile((prev) => ({ ...prev, [project.id]: file }))}
+                    onMessageChange={(message) => setExecutorMessage((prev) => ({ ...prev, [project.id]: message }))}
+                    onUploadFile={async () => {
+                      if (!additionalFile[project.id]) {
+                        alert(t('rejection.fileRequired', 'Please select a file to upload'));
+                        return;
+                      }
+                      setUploadingFile((prev) => ({ ...prev, [project.id]: true }));
+                      try {
+                        const formData = new FormData();
+                        formData.append('additionalFile', additionalFile[project.id]);
+                        if (executorMessage[project.id]) {
+                          formData.append('executorMessage', executorMessage[project.id]);
+                        }
+                        await api.post(`/api/projects/${project.id}/add-additional-material`, formData, {
+                          headers: { 'Content-Type': 'multipart/form-data' }
+                        });
+                        alert(t('rejection.fileUploaded', 'Additional material uploaded successfully'));
+                        setAdditionalFile((prev) => ({ ...prev, [project.id]: null }));
+                        setExecutorMessage((prev) => ({ ...prev, [project.id]: '' }));
+                        if (isExecutor) {
+                          fetchMyProjects();
+                        } else {
+                          fetchProjects();
+                        }
+                      } catch (error) {
+                        console.error('Error uploading additional material:', error);
+                        alert(error.response?.data?.error || t('rejection.uploadError', 'Failed to upload additional material'));
+                      } finally {
+                        setUploadingFile((prev) => ({ ...prev, [project.id]: false }));
+                      }
+                    }}
+                    onSendMessage={async () => {
+                      if (!executorMessage[project.id]?.trim()) {
+                        alert(t('rejection.messageRequired', 'Please enter a message'));
+                        return;
+                      }
+                      try {
+                        await api.post(`/api/projects/${project.id}/send-message-to-reviewers`, {
+                          message: executorMessage[project.id]
+                        });
+                        alert(t('rejection.messageSent', 'Message sent successfully'));
+                        setExecutorMessage((prev) => ({ ...prev, [project.id]: '' }));
+                        if (isExecutor) {
+                          fetchMyProjects();
+                        } else {
+                          fetchProjects();
+                        }
+                      } catch (error) {
+                        console.error('Error sending message:', error);
+                        alert(error.response?.data?.error || t('rejection.messageError', 'Failed to send message'));
+                      }
+                    }}
+                  />
+                )}
               </div>
             )}
 
@@ -609,6 +703,140 @@ const ProjectList = () => {
           )}
         </div>
       )}
+    </div>
+  );
+};
+
+// 却下情報表示コンポーネント
+const RejectionDetailsSection = ({ 
+  project, 
+  rejectionDetails, 
+  additionalFile, 
+  executorMessage, 
+  uploadingFile,
+  onFileChange, 
+  onMessageChange, 
+  onUploadFile, 
+  onSendMessage 
+}) => {
+  const { t } = useLanguage();
+  
+  // 却下した審査員を取得
+  const rejectedReviewers = rejectionDetails?.reviewers?.filter(r => {
+    const approval = rejectionDetails?.reviewer_approvals?.[r.id];
+    return approval && approval.status === 'rejected';
+  }) || [];
+  
+  return (
+    <div className="mt-4 border-t pt-4">
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+        <h4 className="text-lg font-semibold text-red-800 mb-3">
+          {t('rejection.title', 'Project Rejected')}
+        </h4>
+        
+        {/* 却下した審査員と理由 */}
+        {rejectedReviewers.length > 0 && (
+          <div className="space-y-3 mb-4">
+            {rejectedReviewers.map((reviewer) => {
+              const approval = rejectionDetails?.reviewer_approvals?.[reviewer.id];
+              return (
+                <div key={reviewer.id} className="bg-white rounded p-3 border border-red-200">
+                  <div className="font-medium text-gray-900 mb-1">
+                    {t('rejection.reviewer', 'Reviewer')}: {reviewer.name || reviewer.email}
+                  </div>
+                  {approval?.review_comment && (
+                    <div className="text-sm text-gray-700 mt-2">
+                      <span className="font-medium">{t('rejection.reason', 'Rejection Reason')}:</span>
+                      <p className="mt-1 whitespace-pre-wrap">{approval.review_comment}</p>
+                    </div>
+                  )}
+                  {approval?.updated_at && (
+                    <div className="text-xs text-gray-500 mt-2">
+                      {t('rejection.rejectedAt', 'Rejected at')}: {new Date(approval.updated_at).toLocaleString()}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        
+        {/* 最終決裁者が却下した場合 */}
+        {rejectionDetails?.final_approver_user_id && project.review_comment && project.application_status === 'rejected' && (
+          <div className="bg-white rounded p-3 border border-red-200 mb-4">
+            <div className="font-medium text-gray-900 mb-1">
+              {t('rejection.finalApprover', 'Final Approver')}: {rejectionDetails.final_approver_name || rejectionDetails.final_approver_email}
+            </div>
+            {project.review_comment && (
+              <div className="text-sm text-gray-700 mt-2">
+                <span className="font-medium">{t('rejection.reason', 'Rejection Reason')}:</span>
+                <p className="mt-1 whitespace-pre-wrap">{project.review_comment}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      
+      {/* 資料追加とメッセージ送信 */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h5 className="text-md font-semibold text-blue-800 mb-3">
+          {t('rejection.actions', 'Actions')}
+        </h5>
+        
+        {/* 追加資料のアップロード */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            {t('rejection.uploadAdditionalMaterial', 'Upload Additional Material')}
+          </label>
+          <input
+            type="file"
+            onChange={(e) => onFileChange(e.target.files[0])}
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+            accept=".pdf,.doc,.docx,.pptx,.xlsx"
+          />
+          {additionalFile && (
+            <p className="text-xs text-gray-600 mt-1">
+              {t('rejection.selectedFile', 'Selected file')}: {additionalFile.name}
+            </p>
+          )}
+          <button
+            onClick={onUploadFile}
+            disabled={!additionalFile || uploadingFile}
+            className={`mt-2 px-4 py-2 rounded-md text-sm font-medium ${
+              !additionalFile || uploadingFile
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+            }`}
+          >
+            {uploadingFile ? t('rejection.uploading', 'Uploading...') : t('rejection.upload', 'Upload')}
+          </button>
+        </div>
+        
+        {/* メッセージ送信 */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            {t('rejection.sendMessage', 'Send Message to Reviewers')}
+          </label>
+          <textarea
+            rows="4"
+            value={executorMessage || ''}
+            onChange={(e) => onMessageChange(e.target.value)}
+            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border mb-2"
+            placeholder={t('rejection.messagePlaceholder', 'Enter your message to reviewers...')}
+          />
+          <button
+            onClick={onSendMessage}
+            disabled={!executorMessage?.trim()}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${
+              !executorMessage?.trim()
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+          >
+            {t('rejection.send', 'Send Message')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

@@ -4116,6 +4116,211 @@ app.get('/api/projects/:id/missing-sections', authenticateToken, requireApproved
   }
 });
 
+// ==================== Additional Materials & Messages API ====================
+
+// Upload additional material for a rejected project (executor only)
+app.post('/api/projects/:id/add-additional-material', uploadLimiter, authenticateToken, requireApproved, upload.single('additionalFile'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { executorMessage } = req.body;
+    
+    const userEmail = req.user.email;
+    const userResult = await db.query('SELECT id FROM users WHERE email = $1', [userEmail]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = userResult.rows[0].id;
+    
+    const projectResult = await db.query('SELECT executor_id, application_status FROM projects WHERE id = $1', [id]);
+    if (projectResult.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    
+    const project = projectResult.rows[0];
+    if (project.executor_id !== userId) {
+      return res.status(403).json({ error: 'Only the project executor can upload additional materials' });
+    }
+    
+    // プロジェクトが却下されているか確認
+    if (project.application_status !== 'rejected') {
+      // reviewer_approvalsに却下があるか確認
+      const projectWithRoute = await ensureProjectRoute(project);
+      const approvals = projectWithRoute.reviewer_approvals || {};
+      const hasRejection = Object.values(approvals).some(a => a && a.status === 'rejected');
+      
+      if (!hasRejection) {
+        return res.status(400).json({ error: 'Additional materials can only be uploaded for rejected projects' });
+      }
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'File is required' });
+    }
+    
+    // ファイルをアップロード
+    const fileInfo = await uploadFile(req.file, id, userId.toString());
+    
+    // データベースに保存
+    const result = await db.query(
+      `INSERT INTO project_additional_materials (project_id, file_url, file_name, file_type, file_size, uploaded_by, message)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [id, fileInfo.url, fileInfo.originalName, fileInfo.contentType, fileInfo.size, userId, executorMessage || null]
+    );
+    
+    res.json({ success: true, material: result.rows[0] });
+  } catch (error) {
+    return handleError(res, error, 'Upload Additional Material');
+  }
+});
+
+// Send message to reviewers (executor only)
+app.post('/api/projects/:id/send-message-to-reviewers', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+    
+    if (!message || !message.trim()) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+    
+    const userEmail = req.user.email;
+    const userResult = await db.query('SELECT id FROM users WHERE email = $1', [userEmail]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = userResult.rows[0].id;
+    
+    const projectResult = await db.query('SELECT executor_id, application_status FROM projects WHERE id = $1', [id]);
+    if (projectResult.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    
+    const project = projectResult.rows[0];
+    if (project.executor_id !== userId) {
+      return res.status(403).json({ error: 'Only the project executor can send messages to reviewers' });
+    }
+    
+    // プロジェクトの審査者を取得
+    const reviewersResult = await db.query(
+      'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
+      [id]
+    );
+    const reviewerIds = reviewersResult.rows.map(r => r.reviewer_id);
+    
+    if (reviewerIds.length === 0) {
+      return res.status(400).json({ error: 'No reviewers assigned to this project' });
+    }
+    
+    // すべての審査者にメッセージを送信（to_user_idはNULLで全員に送信）
+    const result = await db.query(
+      `INSERT INTO project_messages (project_id, from_user_id, to_user_id, message)
+       VALUES ($1, $2, NULL, $3) RETURNING *`,
+      [id, userId, message.trim()]
+    );
+    
+    res.json({ success: true, message: result.rows[0] });
+  } catch (error) {
+    return handleError(res, error, 'Send Message to Reviewers');
+  }
+});
+
+// Get additional materials for a project
+app.get('/api/projects/:id/additional-materials', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const userEmail = req.user.email;
+    const userResult = await db.query('SELECT id, position, is_admin FROM users WHERE email = $1', [userEmail]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = userResult.rows[0].id;
+    const isAdmin = userResult.rows[0].is_admin;
+    
+    const projectResult = await db.query('SELECT executor_id FROM projects WHERE id = $1', [id]);
+    if (projectResult.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    
+    const project = projectResult.rows[0];
+    const isExecutor = project.executor_id === userId;
+    
+    // 審査者かどうか確認
+    const reviewersResult = await db.query(
+      'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1 AND reviewer_id = $2',
+      [id, userId]
+    );
+    const isReviewer = reviewersResult.rows.length > 0;
+    
+    if (!isExecutor && !isReviewer && !isAdmin) {
+      return res.status(403).json({ error: 'You do not have permission to view additional materials for this project' });
+    }
+    
+    const materialsResult = await db.query(
+      `SELECT am.*, u.name as uploaded_by_name, u.email as uploaded_by_email
+       FROM project_additional_materials am
+       LEFT JOIN users u ON am.uploaded_by = u.id
+       WHERE am.project_id = $1
+       ORDER BY am.uploaded_at DESC`,
+      [id]
+    );
+    
+    res.json({ materials: materialsResult.rows });
+  } catch (error) {
+    return handleError(res, error, 'Get Additional Materials');
+  }
+});
+
+// Get messages for a project
+app.get('/api/projects/:id/messages', authenticateToken, requireApproved, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const userEmail = req.user.email;
+    const userResult = await db.query('SELECT id, position, is_admin FROM users WHERE email = $1', [userEmail]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = userResult.rows[0].id;
+    const isAdmin = userResult.rows[0].is_admin;
+    
+    const projectResult = await db.query('SELECT executor_id FROM projects WHERE id = $1', [id]);
+    if (projectResult.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    
+    const project = projectResult.rows[0];
+    const isExecutor = project.executor_id === userId;
+    
+    // 審査者かどうか確認
+    const reviewersResult = await db.query(
+      'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1 AND reviewer_id = $2',
+      [id, userId]
+    );
+    const isReviewer = reviewersResult.rows.length > 0;
+    
+    if (!isExecutor && !isReviewer && !isAdmin) {
+      return res.status(403).json({ error: 'You do not have permission to view messages for this project' });
+    }
+    
+    // 実行者は全メッセージを、審査者は自分宛てまたは全員宛てのメッセージを取得
+    let messagesResult;
+    if (isExecutor || isAdmin) {
+      messagesResult = await db.query(
+        `SELECT m.*, 
+                u_from.name as from_user_name, u_from.email as from_user_email,
+                u_to.name as to_user_name, u_to.email as to_user_email
+         FROM project_messages m
+         LEFT JOIN users u_from ON m.from_user_id = u_from.id
+         LEFT JOIN users u_to ON m.to_user_id = u_to.id
+         WHERE m.project_id = $1
+         ORDER BY m.created_at DESC`,
+        [id]
+      );
+    } else {
+      messagesResult = await db.query(
+        `SELECT m.*, 
+                u_from.name as from_user_name, u_from.email as from_user_email,
+                u_to.name as to_user_name, u_to.email as to_user_email
+         FROM project_messages m
+         LEFT JOIN users u_from ON m.from_user_id = u_from.id
+         LEFT JOIN users u_to ON m.to_user_id = u_to.id
+         WHERE m.project_id = $1 AND (m.to_user_id = $2 OR m.to_user_id IS NULL)
+         ORDER BY m.created_at DESC`,
+        [id, userId]
+      );
+    }
+    
+    res.json({ messages: messagesResult.rows });
+  } catch (error) {
+    return handleError(res, error, 'Get Messages');
+  }
+});
+
 // 404ハンドラー
 app.use((req, res) => {
   res.status(404).json({
