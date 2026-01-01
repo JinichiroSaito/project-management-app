@@ -2212,22 +2212,50 @@ app.put('/api/users/profile', authenticateToken, async (req, res) => {
     }
     
     // 現在のユーザー情報を取得（プロフィール入力前かどうかを確認）
-    const currentUser = await db.query(
-      'SELECT name, company, department, position, is_approved FROM users WHERE email = $1',
+    // まずemailで検索、見つからない場合はfirebase_uidで検索
+    let currentUser = await db.query(
+      'SELECT id, name, company, department, position, is_approved, firebase_uid FROM users WHERE email = $1',
       [req.user.email]
     );
     
+    // emailで見つからない場合、firebase_uidで検索
     if (currentUser.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+      currentUser = await db.query(
+        'SELECT id, name, company, department, position, is_approved, firebase_uid FROM users WHERE firebase_uid = $1',
+        [req.user.uid]
+      );
+      
+      // firebase_uidで見つかった場合、emailを更新して紐付ける
+      if (currentUser.rows.length > 0) {
+        await db.query(
+          'UPDATE users SET email = $1, firebase_uid = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+          [req.user.email, req.user.uid, currentUser.rows[0].id]
+        );
+      }
+    } else {
+      // emailで見つかった場合、firebase_uidが一致しているか確認
+      const foundUser = currentUser.rows[0];
+      if (!foundUser.firebase_uid || foundUser.firebase_uid !== req.user.uid) {
+        // firebase_uidが設定されていない、または異なる場合、更新する
+        await db.query(
+          'UPDATE users SET firebase_uid = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+          [req.user.uid, foundUser.id]
+        );
+      }
     }
     
-    const wasProfileEmpty = !currentUser.rows[0].name || !currentUser.rows[0].company;
-    const isPending = !currentUser.rows[0].is_approved;
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found. Please sign up first.' });
+    }
     
-    // プロフィール情報を更新
+    const user = currentUser.rows[0];
+    const wasProfileEmpty = !user.name || !user.company;
+    const isPending = !user.is_approved;
+    
+    // プロフィール情報を更新（idで更新するように変更）
     const result = await db.query(
-      'UPDATE users SET name = $1, company = $2, department = $3, position = $4, updated_at = CURRENT_TIMESTAMP WHERE email = $5 RETURNING *',
-      [name, company, department, position, req.user.email]
+      'UPDATE users SET name = $1, company = $2, department = $3, position = $4, firebase_uid = $5, email = $6, updated_at = CURRENT_TIMESTAMP WHERE id = $7 RETURNING *',
+      [name, company, department, position, req.user.uid, req.user.email, user.id]
     );
     
     // プロフィール情報が初めて入力され、かつ承認待ちの場合、管理者に承認依頼メールを送信
