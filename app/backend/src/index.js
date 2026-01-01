@@ -985,16 +985,30 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const userId = userResult.rows[0].id;
 
+    // まず、データベースから最新のプロジェクト情報を取得
     const projectResult = await db.query('SELECT * FROM projects WHERE id = $1', [id]);
     if (projectResult.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
-    const project = await ensureProjectRoute(projectResult.rows[0]);
+    
+    // ensureProjectRouteを呼ぶ前に、最新のreviewer_approvalsを取得（上書きを防ぐため）
+    const currentProject = projectResult.rows[0];
+    const currentReviewerApprovals = currentProject.reviewer_approvals || {};
+    
+    // ensureProjectRouteを呼び出す（final_approver_user_idとproject_reviewersを設定するため）
+    const project = await ensureProjectRoute(currentProject);
     
     // ensureProjectRouteの後に、データベースから最新のreviewer_approvalsを再取得
+    // ただし、既存の承認情報がある場合はそれを保持
     const latestProjectResult = await db.query(
       'SELECT reviewer_approvals FROM projects WHERE id = $1',
       [id]
     );
-    const latestReviewerApprovals = latestProjectResult.rows[0]?.reviewer_approvals || {};
+    let latestReviewerApprovals = latestProjectResult.rows[0]?.reviewer_approvals || {};
+    
+    // 既存の承認情報を保持（ensureProjectRouteが上書きした場合に備える）
+    if (currentReviewerApprovals && Object.keys(currentReviewerApprovals).length > 0) {
+      // 既存の承認情報をマージ（最新のデータを優先）
+      latestReviewerApprovals = { ...currentReviewerApprovals, ...latestReviewerApprovals };
+    }
 
     const assignedReviewers = await db.query(
       'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1 AND reviewer_id = $2',
