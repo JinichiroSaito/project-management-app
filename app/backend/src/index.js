@@ -30,7 +30,9 @@ function buildReviewerApprovals(project, reviewers) {
   const current = project.reviewer_approvals || {};
   const base = {};
   reviewers.forEach((rid) => {
-    base[rid] = current[rid] || { status: 'pending', updated_at: null };
+    // JSONBのキーは文字列として保存されるため、文字列キーを使用
+    const key = String(rid);
+    base[key] = current[key] || current[rid] || { status: 'pending', updated_at: null };
   });
   return base;
 }
@@ -886,18 +888,25 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
 
     // 楽観的ロック：現在のreviewer_approvalsを取得してから更新
     const currentApprovals = project.reviewer_approvals || {};
+    // JSONBのキーは文字列として保存されるため、文字列キーを使用
+    const userIdKey = String(userId);
     
-    // 既に承認または却下済みの場合はエラーを返す
-    if (currentApprovals[userId] && currentApprovals[userId].status) {
+    // 既に承認または却下済みの場合はエラーを返す（数値キーと文字列キーの両方をチェック）
+    const existingApproval = currentApprovals[userIdKey] || currentApprovals[userId];
+    if (existingApproval && existingApproval.status) {
       return res.status(400).json({ 
-        error: `You have already ${currentApprovals[userId].status === 'approved' ? 'approved' : 'rejected'} this project`,
+        error: `You have already ${existingApproval.status === 'approved' ? 'approved' : 'rejected'} this project`,
         reviewer_approvals: currentApprovals
       });
     }
     
-    // 承認または却下を追加
+    // 承認または却下を追加（文字列キーで統一）
     const updatedApprovals = { ...currentApprovals };
-    updatedApprovals[userId] = { 
+    // 数値キーが存在する場合は削除して、文字列キーで統一
+    if (updatedApprovals[userId] && !updatedApprovals[userIdKey]) {
+      delete updatedApprovals[userId];
+    }
+    updatedApprovals[userIdKey] = { 
       status: finalDecision === 'approved' ? 'approved' : 'rejected', 
       review_comment: review_comment || null,
       updated_at: new Date().toISOString() 
@@ -918,12 +927,14 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
       const latestProject = await db.query('SELECT reviewer_approvals FROM projects WHERE id = $1', [id]);
       const latestApprovals = latestProject.rows[0]?.reviewer_approvals || {};
       
-      // 既に承認/却下済みの場合は成功として扱う
-      if (latestApprovals[userId] && latestApprovals[userId].status) {
+      // 既に承認/却下済みの場合は成功として扱う（数値キーと文字列キーの両方をチェック）
+      const userIdKey = String(userId);
+      const existingApproval = latestApprovals[userIdKey] || latestApprovals[userId];
+      if (existingApproval && existingApproval.status) {
         return res.json({ 
           success: true, 
           reviewer_approvals: latestApprovals,
-          message: `Already ${latestApprovals[userId].status} (concurrent update detected)`
+          message: `Already ${existingApproval.status} (concurrent update detected)`
         });
       }
       
@@ -2478,7 +2489,13 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
     if (decision === 'approved') {
       const currentApprovals = fullProject.reviewer_approvals || {};
       const updatedApprovals = { ...currentApprovals };
-      updatedApprovals[userId] = { status: 'approved', updated_at: new Date().toISOString() };
+      // JSONBのキーは文字列として保存されるため、文字列キーを使用
+      const userIdKey = String(userId);
+      // 数値キーが存在する場合は削除して、文字列キーで統一
+      if (updatedApprovals[userId] && !updatedApprovals[userIdKey]) {
+        delete updatedApprovals[userId];
+      }
+      updatedApprovals[userIdKey] = { status: 'approved', updated_at: new Date().toISOString() };
       
       // reviewer_approvalsを更新（application_statusは変更しない）
       await db.query(
