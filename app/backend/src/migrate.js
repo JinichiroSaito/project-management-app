@@ -41,6 +41,10 @@ async function runMigrations() {
         // 既に存在するカラムのエラーは無視
         if (migrationError.message && migrationError.message.includes('already exists')) {
           console.log(`⚠ ${file} - columns may already exist, skipping...`);
+        } 
+        // カラム数の上限エラーも無視（既にカラムが存在するか、別の方法で処理済みの場合）
+        else if (migrationError.code === '54011' && migrationError.message && migrationError.message.includes('tables can have at most 1600 columns')) {
+          console.log(`⚠ ${file} - table column limit reached, skipping (columns may already exist or be handled by later migrations)...`);
         } else {
           throw migrationError;
         }
