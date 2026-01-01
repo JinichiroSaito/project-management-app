@@ -303,22 +303,38 @@ const ReviewDashboard = () => {
 
   const handleReviewerReject = async (project) => {
     const comment = reviewerComments[project.id] || '';
-    if (!comment.trim()) {
+    const trimmedComment = comment.trim();
+    if (!trimmedComment) {
       alert(t('review.commentRequired', 'Review comment is required when rejecting'));
       return;
     }
 
     setApprovalLoading((prev) => ({ ...prev, [project.id]: true }));
     try {
-      await api.post(`/api/projects/${project.id}/reviewer-approve`, {
+      console.log('[ReviewDashboard] Sending reviewer reject:', {
+        projectId: project.id,
         decision: 'rejected',
-        review_comment: comment
+        review_comment: trimmedComment,
+        commentLength: trimmedComment.length
       });
+      const response = await api.post(`/api/projects/${project.id}/reviewer-approve`, {
+        decision: 'rejected',
+        review_comment: trimmedComment
+      });
+      console.log('[ReviewDashboard] Reviewer reject success:', response.data);
       await refreshApprovalStatus(project.id);
       setShowReviewerCommentInput((prev) => ({ ...prev, [project.id]: false }));
       setReviewerComments((prev) => ({ ...prev, [project.id]: '' }));
+      // リストを更新
+      fetchPendingReviews();
+      fetchApprovedProjects();
     } catch (error) {
       console.error('Reviewer reject failed:', error);
+      console.error('Error details:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message
+      });
       alert(error.response?.data?.error || 'Failed to reject as reviewer');
     } finally {
       setApprovalLoading((prev) => ({ ...prev, [project.id]: false }));

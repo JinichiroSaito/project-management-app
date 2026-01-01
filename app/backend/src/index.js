@@ -857,15 +857,30 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     const { id } = req.params;
     const { decision, review_comment } = req.body; // decision: 'approved' or 'rejected'
     
+    console.log('[Reviewer Approve] Request received:', {
+      projectId: id,
+      decision,
+      review_comment: review_comment ? `${review_comment.substring(0, 50)}...` : null,
+      review_comment_length: review_comment?.length,
+      body: req.body
+    });
+    
     // decisionが指定されていない場合は、デフォルトで'approved'とする（後方互換性のため）
     const finalDecision = decision || 'approved';
     
     if (!['approved', 'rejected'].includes(finalDecision)) {
+      console.error('[Reviewer Approve] Invalid decision:', finalDecision);
       return res.status(400).json({ error: 'Decision must be either "approved" or "rejected"' });
     }
     
     // 却下の場合、コメントが必須
-    if (finalDecision === 'rejected' && !review_comment?.trim()) {
+    const trimmedComment = review_comment?.trim();
+    if (finalDecision === 'rejected' && !trimmedComment) {
+      console.error('[Reviewer Approve] Rejection comment missing:', {
+        review_comment,
+        trimmedComment,
+        review_comment_type: typeof review_comment
+      });
       return res.status(400).json({ error: 'Review comment is required when rejecting' });
     }
     
@@ -908,9 +923,17 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     }
     updatedApprovals[userIdKey] = { 
       status: finalDecision === 'approved' ? 'approved' : 'rejected', 
-      review_comment: review_comment || null,
+      review_comment: trimmedComment || null,
       updated_at: new Date().toISOString() 
     };
+    
+    console.log('[Reviewer Approve] Updating approvals:', {
+      userId,
+      userIdKey,
+      finalDecision,
+      review_comment: trimmedComment ? `${trimmedComment.substring(0, 50)}...` : null,
+      updatedApprovals
+    });
 
     // 楽観的ロック：reviewer_approvalsが変更されていないことを確認してから更新
     const updateResult = await db.query(
