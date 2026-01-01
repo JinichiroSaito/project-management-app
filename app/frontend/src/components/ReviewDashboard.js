@@ -87,17 +87,23 @@ const ReviewDashboard = () => {
 
       // fetch approval status for each pending project
       const statuses = {};
+      const errors = {};
       await Promise.all(
         (response.data.projects || []).map(async (p) => {
           try {
             const st = await api.get(`/api/projects/${p.id}/approval-status`);
             statuses[p.id] = st.data;
           } catch (err) {
-            console.warn('approval status fetch failed for project', p.id, err.message);
+            console.error('approval status fetch failed for project', p.id, err);
+            errors[p.id] = err.response?.data?.error || err.message || 'Failed to fetch approval status';
           }
         })
       );
       setApprovalStatus(statuses);
+      // エラーが発生した場合、コンソールに記録（必要に応じてユーザーに通知）
+      if (Object.keys(errors).length > 0) {
+        console.error('[ReviewDashboard] Approval status fetch errors:', errors);
+      }
 
       setError('');
       if ((response.data.projects || []).length === 0) {
@@ -919,17 +925,47 @@ const ReviewDashboard = () => {
               </div>
 
               {/* 承認フロー情報の表示 */}
-              {renderApprovalStatus(project) || (
-                <div className="mt-4 border-t pt-4">
-                  <p className="text-sm text-gray-600 mb-2">
-                    {t('review.approval.loading', 'Loading approval status...')}
-                  </p>
-                </div>
-              )}
-
-              {/* 古いレビューボタンは非表示（承認フロー情報を使用） */}
-              {/* 注意: 古いボタンは使用しない。renderApprovalStatusで表示されるボタンのみを使用 */}
-              )}
+              <div className="mt-4 border-t pt-4">
+                {renderApprovalStatus(project) || (
+                  <div>
+                    <p className="text-sm text-gray-600 mb-4">
+                      {t('review.approval.loading', 'Loading approval status...')}
+                    </p>
+                    {/* approvalStatusが取得できない場合のフォールバック */}
+                    <div className="flex flex-col space-y-2">
+                      <button
+                        onClick={async () => {
+                          try {
+                            setApprovalLoading((prev) => ({ ...prev, [project.id]: true }));
+                            // approvalStatusを再取得
+                            const st = await api.get(`/api/projects/${project.id}/approval-status`);
+                            setApprovalStatus((prev) => ({ ...prev, [project.id]: st.data }));
+                            // 再取得後、適切なボタンが表示される
+                          } catch (err) {
+                            console.error('Failed to fetch approval status:', err);
+                            alert(t('review.approval.fetchError', 'Failed to load approval status. Please refresh the page.'));
+                          } finally {
+                            setApprovalLoading((prev) => ({ ...prev, [project.id]: false }));
+                          }
+                        }}
+                        disabled={approvalLoading[project.id]}
+                        className={`px-4 py-2 rounded-md text-sm font-medium ${
+                          approvalLoading[project.id]
+                            ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                            : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                        }`}
+                      >
+                        {approvalLoading[project.id]
+                          ? t('common.processing', 'Processing...')
+                          : t('review.approval.refresh', 'Refresh Approval Status')}
+                      </button>
+                      <p className="text-xs text-gray-500">
+                        {t('review.approval.refreshHint', 'If approval status does not load, click the button above to refresh.')}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
