@@ -763,15 +763,25 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
 
     const project = projectResult.rows[0];
     
-    // 実行者または審査者・管理者のみアクセス可能
+    // 実行者、審査者、管理者、または最終決裁者のみアクセス可能
     const isExecutor = project.executor_id === userId;
-    const isAdmin = await db.query('SELECT is_admin FROM users WHERE id = $1', [userId]).then(r => r.rows[0]?.is_admin || false);
-    const isReviewer = await db.query(
+    const adminResult = await db.query('SELECT is_admin FROM users WHERE id = $1', [userId]);
+    const isAdmin = adminResult.rows[0]?.is_admin || false;
+    const reviewerResult = await db.query(
       'SELECT COUNT(*) as count FROM project_reviewers WHERE project_id = $1 AND reviewer_id = $2',
       [id, userId]
-    ).then(r => parseInt(r.rows[0]?.count || 0) > 0);
+    );
+    const isReviewer = parseInt(reviewerResult.rows[0]?.count || 0) > 0;
     
-    if (!isExecutor && !isAdmin && !isReviewer) {
+    // 最終決裁者かどうかを確認（approval_routesテーブルでfinal_approver_user_idが設定されているか）
+    const finalApproverResult = await db.query(
+      'SELECT COUNT(*) as count FROM approval_routes WHERE final_approver_user_id = $1',
+      [userId]
+    );
+    const isFinalApproverInRoutes = parseInt(finalApproverResult.rows[0]?.count || 0) > 0;
+    const isFinalApproverForProject = project.final_approver_user_id === userId;
+    
+    if (!isExecutor && !isAdmin && !isReviewer && !isFinalApproverForProject && !isFinalApproverInRoutes) {
       return res.status(403).json({ error: 'You do not have permission to view this project\'s approval status' });
     }
 
@@ -790,9 +800,12 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
     const reviewerStatuses = reviewers.rows.map(reviewer => {
       const approval = reviewerApprovals[reviewer.id];
       return {
-        reviewer_id: reviewer.id,
-        reviewer_name: reviewer.name,
-        reviewer_email: reviewer.email,
+        id: reviewer.id, // フロントエンドが期待する形式
+        reviewer_id: reviewer.id, // 後方互換性のため
+        name: reviewer.name, // フロントエンドが期待する形式
+        reviewer_name: reviewer.name, // 後方互換性のため
+        email: reviewer.email, // フロントエンドが期待する形式
+        reviewer_email: reviewer.email, // 後方互換性のため
         status: approval?.status || 'pending',
         updated_at: approval?.updated_at || null
       };
