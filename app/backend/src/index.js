@@ -32,7 +32,13 @@ function buildReviewerApprovals(project, reviewers) {
   reviewers.forEach((rid) => {
     // JSONBのキーは文字列として保存されるため、文字列キーを使用
     const key = String(rid);
-    base[key] = current[key] || current[rid] || { status: 'pending', updated_at: null };
+    // 数値キーと文字列キーの両方をチェック
+    const existingApproval = current[key] || 
+                              current[rid] || 
+                              current[Number(rid)] ||
+                              (Object.keys(current).find(k => Number(k) === rid) ? current[Object.keys(current).find(k => Number(k) === rid)] : null);
+    // 既存の承認情報がある場合はそれを保持、ない場合はpendingで初期化
+    base[key] = existingApproval && existingApproval.status ? existingApproval : { status: 'pending', updated_at: null };
   });
   return base;
 }
