@@ -611,8 +611,40 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
           // 各プロジェクトに対してensureProjectRouteを呼び出して、final_approver_user_idを設定
           const projectsWithRoute = [];
           for (const project of allSubmittedProjects.rows) {
-            const projectWithRoute = await ensureProjectRoute(project);
-            projectsWithRoute.push(projectWithRoute);
+            await ensureProjectRoute(project);
+            // ensureProjectRouteがデータベースを更新した可能性があるため、最新の情報を再取得
+            const updatedProject = await db.query(
+              `SELECT p.*, 
+                      u1.name as executor_name, u1.email as executor_email,
+                      u2.name as reviewer_name, u2.email as reviewer_email,
+                      p.extracted_text,
+                      p.extracted_text_updated_at,
+                      p.missing_sections,
+                      p.missing_sections_updated_at,
+                      COALESCE(
+                        (
+                          SELECT json_agg(
+                            json_build_object(
+                              'id', u3.id,
+                              'name', u3.name,
+                              'email', u3.email
+                            )
+                          )
+                          FROM project_reviewers pr2
+                          LEFT JOIN users u3 ON pr2.reviewer_id = u3.id
+                          WHERE pr2.project_id = p.id
+                        ),
+                        '[]'::json
+                      ) as reviewers
+               FROM projects p
+               LEFT JOIN users u1 ON p.executor_id = u1.id
+               LEFT JOIN users u2 ON p.reviewer_id = u2.id
+               WHERE p.id = $1`,
+              [project.id]
+            );
+            if (updatedProject.rows.length > 0) {
+              projectsWithRoute.push(updatedProject.rows[0]);
+            }
           }
           
           // 最終決裁者として設定されているプロジェクトをフィルタリング
@@ -634,11 +666,12 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
             }
             
             const reviewerIds = reviewers.rows.map(r => r.reviewer_id);
+            // データベースから取得した最新のreviewer_approvalsを使用
             const approvals = project.reviewer_approvals || {};
             
             // すべての審査者が承認しているか確認
             const allApproved = reviewerIds.every((reviewerId) => {
-              const approval = approvals[reviewerId];
+              const approval = approvals[String(reviewerId)]; // reviewerIdを文字列に変換
               return approval && approval.status === 'approved';
             });
             
@@ -646,6 +679,7 @@ app.get('/api/projects/review/pending', authenticateToken, requireApproved, asyn
               projectId: project.id,
               projectName: project.name,
               totalReviewers: reviewerIds.length,
+              reviewerIds: reviewerIds,
               approvals: approvals,
               allApproved: allApproved
             });
