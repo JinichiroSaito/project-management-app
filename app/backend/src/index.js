@@ -2953,17 +2953,26 @@ app.get('/api/projects/approved/dashboard', authenticateToken, requireApproved, 
 
     // ステップ別にグループ化
     const phases = {
-      mvp_development: [],
+      mvp_development_1: [],
+      mvp_development_2: [],
       business_launch: [],
       business_stabilization: []
     };
 
+    const normalizePhase = (phase) => {
+      if (!phase || phase === 'mvp_development') return 'mvp_development_1';
+      if (['mvp_development_1', 'mvp_development_2', 'business_launch', 'business_stabilization'].includes(phase)) {
+        return phase;
+      }
+      return 'mvp_development_1';
+    };
+
     projectsWithSummaries.forEach(project => {
-      const phase = project.project_phase || 'mvp_development';
+      const phase = normalizePhase(project.project_phase);
       if (phases[phase]) {
         phases[phase].push(project);
       } else {
-        phases.mvp_development.push(project);
+        phases.mvp_development_1.push(project);
       }
     });
 
@@ -3007,12 +3016,14 @@ app.put('/api/projects/:id/phase', authenticateToken, requireApproved, async (re
     const { id } = req.params;
     const { phase } = req.body;
 
-    const validPhases = ['mvp_development', 'business_launch', 'business_stabilization'];
+    const validPhases = ['mvp_development_1', 'mvp_development_2', 'business_launch', 'business_stabilization', 'mvp_development'];
     if (!phase || !validPhases.includes(phase)) {
       return res.status(400).json({ 
         error: `Phase must be one of: ${validPhases.join(', ')}` 
       });
     }
+
+    const normalizedPhase = phase === 'mvp_development' ? 'mvp_development_1' : phase;
 
     // プロジェクトの存在確認
     const project = await db.query(
@@ -3055,7 +3066,7 @@ app.put('/api/projects/:id/phase', authenticateToken, requireApproved, async (re
     // フェーズを更新
     await db.query(
       'UPDATE projects SET project_phase = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [phase, id]
+      [normalizedPhase, id]
     );
 
     res.json({ success: true, phase });

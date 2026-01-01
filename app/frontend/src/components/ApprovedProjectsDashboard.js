@@ -61,21 +61,25 @@ const ApprovedProjectsDashboard = () => {
   };
 
   const getPhaseLabel = (phase) => {
+    const normalized = phase === 'mvp_development' ? 'mvp_development_1' : phase;
     const labels = {
-      mvp_development: t('dashboard.phase.mvpDevelopment', 'MVP Development'),
+      mvp_development_1: t('dashboard.phase.mvpDevelopment1', 'MVP開発①'),
+      mvp_development_2: t('dashboard.phase.mvpDevelopment2', 'MVP開発②'),
       business_launch: t('dashboard.phase.businessLaunch', 'Business Launch'),
       business_stabilization: t('dashboard.phase.businessStabilization', 'Business Stabilization')
     };
-    return labels[phase] || phase;
+    return labels[normalized] || normalized;
   };
 
   const getPhaseColor = (phase) => {
+    const normalized = phase === 'mvp_development' ? 'mvp_development_1' : phase;
     const colors = {
-      mvp_development: 'bg-purple-100 text-purple-800 border-purple-200',
+      mvp_development_1: 'bg-purple-100 text-purple-800 border-purple-200',
+      mvp_development_2: 'bg-purple-50 text-purple-800 border-purple-100',
       business_launch: 'bg-green-100 text-green-800 border-green-200',
       business_stabilization: 'bg-gray-100 text-gray-800 border-gray-200'
     };
-    return colors[phase] || 'bg-gray-100 text-gray-800 border-gray-200';
+    return colors[normalized] || 'bg-gray-100 text-gray-800 border-gray-200';
   };
 
   if (loading) {
@@ -181,12 +185,17 @@ const ApprovedProjectsDashboard = () => {
                           </p>
                         </div>
                         <select
-                          value={project.project_phase || 'mvp_development'}
+                          value={
+                            project.project_phase === 'mvp_development'
+                              ? 'mvp_development_1'
+                              : project.project_phase || 'mvp_development_1'
+                          }
                           onChange={(e) => handleUpdatePhase(project.id, e.target.value)}
                           onClick={(e) => e.stopPropagation()}
                           className="text-xs border border-gray-300 rounded px-1 py-0.5 ml-2 flex-shrink-0"
                         >
-                          <option value="mvp_development">{t('dashboard.phase.mvpDevelopment', 'MVP')}</option>
+                          <option value="mvp_development_1">{t('dashboard.phase.mvpDevelopment1', 'MVP開発①')}</option>
+                          <option value="mvp_development_2">{t('dashboard.phase.mvpDevelopment2', 'MVP開発②')}</option>
                           <option value="business_launch">{t('dashboard.phase.businessLaunch', 'Launch')}</option>
                           <option value="business_stabilization">{t('dashboard.phase.businessStabilization', 'Stabilization')}</option>
                         </select>

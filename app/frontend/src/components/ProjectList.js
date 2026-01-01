@@ -22,6 +22,9 @@ const ProjectList = () => {
 
   useEffect(() => {
     console.log('[ProjectList] useEffect triggered', { isExecutor, userInfo, user });
+    // userInfoが未取得の初期レンダリング時は待つ
+    if (!userInfo) return;
+
     if (isExecutor) {
       fetchMyProjects();
     } else {
@@ -86,6 +89,15 @@ const ProjectList = () => {
         data: error.response?.data,
         message: error.message
       });
+
+      // 実行者でない/トークンがReviewerの場合の403は全件取得にフォールバック
+      if (error.response?.status === 403) {
+        console.warn('[ProjectList] 403 on /api/projects/my, fallback to /api/projects (user not executor)');
+        setError('');
+        fetchProjects();
+        return;
+      }
+
       const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || t('projects.error.fetch');
       setError(errorMessage);
       setLoading(false);
