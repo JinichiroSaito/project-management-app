@@ -373,6 +373,10 @@ export const translations = {
     'review.analysis.rechecking': 'Rechecking...',
     'review.analysis.viewDetails': 'View full details',
     'common.close': 'Close',
+    'review.analysis.status.missing': 'Missing',
+    'review.analysis.status.incomplete': 'Incomplete',
+    'review.analysis.status.ok': 'OK',
+    'review.analysis.checkpoints': 'Checkpoints',
     
     // Business Advisor Chat
     'chat.title': 'Business Advisor',
@@ -790,6 +794,10 @@ export const translations = {
     'review.analysis.rechecking': '再評価中...',
     'review.analysis.viewDetails': '詳細を見る',
     'common.close': '閉じる',
+    'review.analysis.status.missing': '不足',
+    'review.analysis.status.incomplete': '不完全',
+    'review.analysis.status.ok': 'OK',
+    'review.analysis.checkpoints': 'チェックポイント',
     
     // Business Advisor Chat
     'chat.title': 'ビジネスアドバイザー',

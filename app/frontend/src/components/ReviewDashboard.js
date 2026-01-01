@@ -114,6 +114,20 @@ const ReviewDashboard = () => {
     }
   };
 
+  const renderStatusBadge = (label, type = 'default') => {
+    const colors = {
+      missing: 'bg-red-100 text-red-800 border border-red-200',
+      incomplete: 'bg-yellow-100 text-yellow-800 border border-yellow-200',
+      ok: 'bg-green-100 text-green-800 border border-green-200',
+      default: 'bg-gray-100 text-gray-700 border border-gray-200'
+    };
+    return (
+      <span className={`inline-block px-2 py-0.5 text-xs rounded ${colors[type] || colors.default}`}>
+        {label}
+      </span>
+    );
+  };
+
   const recheckAnalysis = async (project) => {
     if (!project?.id) return;
     setRecheckLoading((prev) => ({ ...prev, [project.id]: true }));
@@ -232,16 +246,38 @@ const ReviewDashboard = () => {
               <h4 className="text-sm font-semibold text-gray-800 mb-2">
                 {t('projectApplication.analysis.missingSections', 'Missing Sections')} ({missingSections.missing_sections.length})
               </h4>
-              <div className="space-y-1 text-sm text-gray-800">
+              <div className="space-y-2 text-sm text-gray-800">
                 {missingSections.missing_sections.map((section, idx) => (
-                  <div key={idx} className="p-2 rounded border border-yellow-100 bg-yellow-50">
-                    <div className="font-medium text-yellow-900">
-                      {section.section_number}. {t(`projectApplication.sectionName.${section.section_name}`, section.section_name)}
+                  <div key={idx} className="p-3 rounded border border-yellow-100 bg-yellow-50">
+                    <div className="flex items-center space-x-2">
+                      <div className="font-medium text-yellow-900">
+                        {section.section_number}. {t(`projectApplication.sectionName.${section.section_name}`, section.section_name)}
+                      </div>
+                      <div className="flex space-x-1">
+                        {section.is_missing && renderStatusBadge(t('review.analysis.status.missing', 'Missing'), 'missing')}
+                        {section.is_incomplete && renderStatusBadge(t('review.analysis.status.incomplete', 'Incomplete'), 'incomplete')}
+                        {!section.is_missing && !section.is_incomplete && renderStatusBadge(t('review.analysis.status.ok', 'OK'), 'ok')}
+                      </div>
                     </div>
-                    <div className="text-xs text-yellow-800">
-                      {section.is_missing && <span className="mr-2">({t('projectApplication.analysis.missing', 'Missing')})</span>}
-                      {section.is_incomplete && <span className="mr-2">({t('projectApplication.analysis.incomplete', 'Incomplete')})</span>}
-                    </div>
+                    {section.reason && (
+                      <p className="text-xs text-gray-700 mt-1">{section.reason}</p>
+                    )}
+                    {section.checkpoints && Array.isArray(section.checkpoints) && section.checkpoints.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <div className="text-xs text-gray-600 font-semibold">
+                          {t('review.analysis.checkpoints', 'Checkpoints')}
+                        </div>
+                        {section.checkpoints.map((cp, cpIdx) => (
+                          <div key={cpIdx} className="text-xs bg-white border border-gray-200 rounded px-2 py-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-800">{cp.point}</span>
+                              {cp.status && renderStatusBadge(cp.status, cp.status === 'ok' ? 'ok' : cp.status === 'missing' ? 'missing' : 'incomplete')}
+                            </div>
+                            {cp.note && <div className="text-gray-600 mt-0.5">{cp.note}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
