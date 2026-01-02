@@ -1188,17 +1188,40 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
       }))
     });
     
-    const updateResult = await db.query(
-      `UPDATE projects 
-       SET reviewer_approvals = $1::jsonb, updated_at = CURRENT_TIMESTAMP 
-       WHERE id = $2
-       RETURNING reviewer_approvals`,
-      [finalApprovals, id]
-    );
+    // 却下の場合、application_statusとstatusも更新する
+    let updateQuery;
+    let updateParams;
+    
+    if (finalDecision === 'rejected') {
+      // 却下の場合：application_statusを'rejected'に、statusを'on_hold'に更新
+      updateQuery = `UPDATE projects 
+                     SET reviewer_approvals = $1::jsonb,
+                         application_status = $2,
+                         status = $3,
+                         review_comment = $4,
+                         reviewed_at = CURRENT_TIMESTAMP,
+                         reviewed_by = $5,
+                         updated_at = CURRENT_TIMESTAMP 
+                     WHERE id = $6
+                     RETURNING reviewer_approvals, application_status, status`;
+      updateParams = [finalApprovals, 'rejected', 'on_hold', trimmedComment || null, userId, id];
+    } else {
+      // 承認の場合：reviewer_approvalsのみ更新（application_statusは変更しない）
+      updateQuery = `UPDATE projects 
+                     SET reviewer_approvals = $1::jsonb, updated_at = CURRENT_TIMESTAMP 
+                     WHERE id = $2
+                     RETURNING reviewer_approvals`;
+      updateParams = [finalApprovals, id];
+    }
+    
+    const updateResult = await db.query(updateQuery, updateParams);
     
     console.log('[Reviewer Approve] Update result:', {
       rowsUpdated: updateResult.rows.length,
-      savedApprovals: updateResult.rows[0]?.reviewer_approvals
+      savedApprovals: updateResult.rows[0]?.reviewer_approvals,
+      application_status: updateResult.rows[0]?.application_status,
+      status: updateResult.rows[0]?.status,
+      finalDecision
     });
 
     if (updateResult.rows.length === 0) {
