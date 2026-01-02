@@ -89,9 +89,27 @@ async function ensureProjectRoute(project) {
     currentApprovals: project.reviewer_approvals
   });
 
+  // 既存の承認情報を保存（buildReviewerApprovalsが上書きしないようにするため）
+  const existingApprovals = project.reviewer_approvals || {};
   const reviewerApprovals = buildReviewerApprovals(project, route.reviewer_ids || []);
   
-  console.log('[Ensure Project Route] Built reviewer approvals:', reviewerApprovals);
+  // 既存の承認情報を復元（statusが設定されているものは保持）
+  Object.keys(existingApprovals).forEach(key => {
+    const existingApproval = existingApprovals[key];
+    // 既存の承認情報があり、statusが設定されている場合は保持
+    if (existingApproval && existingApproval.status && existingApproval.status !== 'pending') {
+      // 文字列キーと数値キーの両方をチェック
+      const stringKey = String(key);
+      const numericKey = Number(key);
+      if (reviewerApprovals[stringKey] || reviewerApprovals[numericKey]) {
+        reviewerApprovals[stringKey] = existingApproval;
+      } else {
+        reviewerApprovals[stringKey] = existingApproval;
+      }
+    }
+  });
+  
+  console.log('[Ensure Project Route] Built reviewer approvals (with existing data preserved):', reviewerApprovals);
   
   await db.query(
     `UPDATE projects
