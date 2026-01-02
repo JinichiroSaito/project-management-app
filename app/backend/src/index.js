@@ -1103,7 +1103,8 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
       currentApprovals
     });
     
-    if (existingApproval && existingApproval.status) {
+    // 'pending'ステータスは未処理状態なので、処理を続行する
+    if (existingApproval && existingApproval.status && existingApproval.status !== 'pending') {
       console.log('[Reviewer Approve] Existing approval found:', {
         userId,
         userIdKey,
