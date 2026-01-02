@@ -931,8 +931,12 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
 
     // 全体の審査状況を計算
     const totalReviewers = reviewers.rows.length;
-    const approvedCount = Object.values(reviewerApprovals).filter(a => a?.status === 'approved').length;
-    const rejectedCount = Object.values(reviewerApprovals).filter(a => a?.status === 'rejected').length;
+    
+    // reviewerStatusesから正確にカウント（reviewer_approvalsのキー不一致を回避）
+    const approvedCount = reviewerStatuses.filter(r => r.status === 'approved').length;
+    const rejectedCount = reviewerStatuses.filter(r => r.status === 'rejected').length;
+    const pendingCount = reviewerStatuses.filter(r => r.status === 'pending').length;
+    
     const allReviewersApproved = totalReviewers > 0 && approvedCount === totalReviewers;
     const canProceedToFinalApproval = allReviewersApproved && projectWithRoute.final_approver_user_id;
 
