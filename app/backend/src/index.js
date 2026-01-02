@@ -1224,8 +1224,18 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
       });
     }
 
-    res.json({ success: true, reviewer_approvals: updatedApprovals });
+    res.json({ success: true, reviewer_approvals: finalApprovals });
   } catch (error) {
+    console.error('[Reviewer Approve] Error occurred:', {
+      error: error.message,
+      stack: error.stack,
+      code: error.code,
+      detail: error.detail,
+      hint: error.hint,
+      projectId: id,
+      userId,
+      decision: finalDecision
+    });
     return handleError(res, error, 'Reviewer Approve/Reject');
   }
 });
