@@ -1148,16 +1148,32 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     );
     const dbApprovalsBeforeUpdate = beforeUpdateResult.rows[0]?.reviewer_approvals || {};
     
-    // 既存の承認情報をマージ（既存のデータを優先）
-    const finalApprovals = { ...dbApprovalsBeforeUpdate, ...updatedApprovals };
+    // 既存の承認情報をマージ（updatedApprovalsを優先、既存の他の審査者の情報は保持）
+    const finalApprovals = { ...dbApprovalsBeforeUpdate };
+    
+    // 現在のユーザーの承認情報を確実に更新（文字列キーで統一）
+    finalApprovals[userIdKey] = updatedApprovals[userIdKey];
+    // 数値キーが存在する場合は削除
+    if (finalApprovals[userId] && userId !== userIdKey) {
+      delete finalApprovals[userId];
+    }
     
     console.log('[Reviewer Approve] Final approvals to save:', {
       userId,
       userIdKey,
       finalDecision,
+      review_comment: trimmedComment ? `${trimmedComment.substring(0, 50)}...` : null,
       dbApprovalsBeforeUpdate,
       updatedApprovals,
-      finalApprovals
+      finalApprovals,
+      finalApprovalsKeys: Object.keys(finalApprovals),
+      finalApprovalsValues: Object.entries(finalApprovals).map(([key, value]) => ({
+        key,
+        keyType: typeof key,
+        value,
+        status: value?.status,
+        review_comment: value?.review_comment
+      }))
     });
     
     const updateResult = await db.query(
@@ -1167,6 +1183,11 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
        RETURNING reviewer_approvals`,
       [finalApprovals, id]
     );
+    
+    console.log('[Reviewer Approve] Update result:', {
+      rowsUpdated: updateResult.rows.length,
+      savedApprovals: updateResult.rows[0]?.reviewer_approvals
+    });
 
     if (updateResult.rows.length === 0) {
       // 競合が発生した場合（他の審査者が同時に承認/却下した場合）
