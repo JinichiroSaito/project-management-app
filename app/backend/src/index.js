@@ -874,9 +874,17 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
 
     // 審査状況の詳細を計算（最新のreviewer_approvalsを使用）
     const reviewerApprovals = latestReviewerApprovals;
-    console.log('[Approval Status] Reviewer approvals raw:', JSON.stringify(reviewerApprovals));
+    console.log('[Approval Status] Reviewer approvals raw:', JSON.stringify(reviewerApprovals, null, 2));
     console.log('[Approval Status] Reviewer approvals keys:', Object.keys(reviewerApprovals));
-    console.log('[Approval Status] Reviewers:', reviewers.rows.map(r => ({ id: r.id, name: r.name })));
+    console.log('[Approval Status] Reviewer approvals values:', Object.entries(reviewerApprovals).map(([key, value]) => ({
+      key,
+      keyType: typeof key,
+      value,
+      valueType: typeof value,
+      status: value?.status,
+      review_comment: value?.review_comment
+    })));
+    console.log('[Approval Status] Reviewers:', reviewers.rows.map(r => ({ id: r.id, name: r.name, email: r.email })));
     
     const reviewerStatuses = reviewers.rows.map(reviewer => {
       // reviewer_approvalsのキーは数値または文字列として保存されている可能性があるため、すべての形式を試す
@@ -897,20 +905,29 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
         const matchingKey = allKeys.find(key => Number(key) === reviewerId);
         if (matchingKey) {
           approval = reviewerApprovals[matchingKey];
+          console.log('[Approval Status] Found approval with matching key:', { reviewerId, matchingKey, approval });
         }
       }
       
       // 空のオブジェクトの場合はnullとして扱う
       if (approval && typeof approval === 'object' && Object.keys(approval).length === 0) {
+        console.log('[Approval Status] Empty approval object found for reviewer:', reviewerId);
         approval = null;
       }
       
+      const reviewerStatus = approval?.status || 'pending';
+      const reviewComment = approval?.review_comment || null;
+      
       console.log('[Approval Status] Reviewer approval lookup:', {
         reviewerId,
+        reviewerName: reviewer.name,
+        reviewerEmail: reviewer.email,
         stringKey,
         numericKey,
         numberKey,
         approval,
+        status: reviewerStatus,
+        review_comment: reviewComment,
         hasStringKey: stringKey in reviewerApprovals,
         hasNumericKey: numericKey in reviewerApprovals,
         allKeys: Object.keys(reviewerApprovals)
@@ -923,9 +940,9 @@ app.get('/api/projects/:id/approval-status', authenticateToken, requireApproved,
         reviewer_name: reviewer.name, // 後方互換性のため
         email: reviewer.email, // フロントエンドが期待する形式
         reviewer_email: reviewer.email, // 後方互換性のため
-        status: approval?.status || 'pending',
+        status: reviewerStatus,
         updated_at: approval?.updated_at || null,
-        review_comment: approval?.review_comment || null // 却下コメントも含める
+        review_comment: reviewComment // 却下コメントも含める
       };
     });
 
