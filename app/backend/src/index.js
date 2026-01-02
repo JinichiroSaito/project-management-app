@@ -989,25 +989,50 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     const projectResult = await db.query('SELECT * FROM projects WHERE id = $1', [id]);
     if (projectResult.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
     
-    // ensureProjectRouteを呼ぶ前に、最新のreviewer_approvalsを取得（上書きを防ぐため）
     const currentProject = projectResult.rows[0];
-    const currentReviewerApprovals = currentProject.reviewer_approvals || {};
+    // 既存のreviewer_approvalsを保存（上書きを防ぐため）
+    const savedReviewerApprovals = currentProject.reviewer_approvals || {};
     
     // ensureProjectRouteを呼び出す（final_approver_user_idとproject_reviewersを設定するため）
+    // ただし、既存の承認情報がある場合は、ensureProjectRouteが上書きしないようにする
     const project = await ensureProjectRoute(currentProject);
     
     // ensureProjectRouteの後に、データベースから最新のreviewer_approvalsを再取得
-    // ただし、既存の承認情報がある場合はそれを保持
     const latestProjectResult = await db.query(
       'SELECT reviewer_approvals FROM projects WHERE id = $1',
       [id]
     );
     let latestReviewerApprovals = latestProjectResult.rows[0]?.reviewer_approvals || {};
     
-    // 既存の承認情報を保持（ensureProjectRouteが上書きした場合に備える）
-    if (currentReviewerApprovals && Object.keys(currentReviewerApprovals).length > 0) {
-      // 既存の承認情報をマージ（最新のデータを優先）
-      latestReviewerApprovals = { ...currentReviewerApprovals, ...latestReviewerApprovals };
+    // 既存の承認情報を復元（ensureProjectRouteが上書きした場合に備える）
+    // 既存の承認情報がある場合は、それを優先してマージ
+    if (savedReviewerApprovals && Object.keys(savedReviewerApprovals).length > 0) {
+      // 既存の承認情報をマージ（既存のデータを優先）
+      latestReviewerApprovals = { ...latestReviewerApprovals, ...savedReviewerApprovals };
+      
+      // もしensureProjectRouteが上書きした場合は、データベースを更新
+      const currentDbApprovals = latestProjectResult.rows[0]?.reviewer_approvals || {};
+      const dbApprovalsKeys = Object.keys(currentDbApprovals);
+      const savedApprovalsKeys = Object.keys(savedReviewerApprovals);
+      
+      // 既存の承認情報が失われている場合は、復元する
+      const hasLostData = savedApprovalsKeys.some(key => {
+        const savedApproval = savedReviewerApprovals[key];
+        const dbApproval = currentDbApprovals[key];
+        // 既存の承認情報があり、statusが設定されている場合
+        if (savedApproval && savedApproval.status && (!dbApproval || !dbApproval.status)) {
+          return true;
+        }
+        return false;
+      });
+      
+      if (hasLostData) {
+        console.log('[Reviewer Approve] Restoring lost reviewer_approvals data');
+        await db.query(
+          'UPDATE projects SET reviewer_approvals = $1::jsonb WHERE id = $2',
+          [latestReviewerApprovals, id]
+        );
+      }
     }
 
     const assignedReviewers = await db.query(
