@@ -193,12 +193,18 @@ app.use((req, res, next) => {
 });
 
 // レート制限の設定
+// 開発環境ではレート制限を緩和
+const isDevelopment = process.env.NODE_ENV === 'development';
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15分
-  max: 100, // 15分間に100リクエストまで
+  max: isDevelopment ? 1000 : 100, // 開発環境では1000リクエスト、本番環境では100リクエスト
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true, // `RateLimit-*` ヘッダーを返す
   legacyHeaders: false, // `X-RateLimit-*` ヘッダーを無効化
+  skip: (req) => {
+    // ヘルスチェックエンドポイントはレート制限をスキップ
+    return req.path === '/api/health' || req.path === '/health';
+  }
 });
 
 // 厳しいレート制限（認証エンドポイント用）

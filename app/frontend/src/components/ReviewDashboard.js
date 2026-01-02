@@ -113,10 +113,23 @@ const ReviewDashboard = () => {
       }
     } catch (error) {
       console.error('[ReviewDashboard] Error fetching pending reviews:', error);
-      const errorMessage = error.response?.data?.error || error.message || 'Failed to fetch pending reviews';
+      const status = error.response?.status;
+      let errorMessage;
+      
+      if (status === 429) {
+        errorMessage = 'リクエストが多すぎます。しばらく待ってから再度お試しください。';
+        // 429エラーの場合、5秒後に自動的にリトライ
+        setTimeout(() => {
+          console.log('[ReviewDashboard] Retrying after rate limit...');
+          fetchPendingReviews();
+        }, 5000);
+      } else {
+        errorMessage = error.response?.data?.error || error.message || 'Failed to fetch pending reviews';
+      }
+      
       setError(errorMessage);
       console.error('[ReviewDashboard] Error details:', {
-        status: error.response?.status,
+        status: status,
         data: error.response?.data,
         message: error.message
       });
