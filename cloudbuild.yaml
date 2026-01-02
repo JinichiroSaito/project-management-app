@@ -37,24 +37,24 @@ steps:
           --args=src/migrate.js \
           --max-retries=3 || true
         
-        EXECUTION_NAME=$(gcloud run jobs execute db-migrate-${SHORT_SHA} \
+        EXECUTION_NAME=$$(gcloud run jobs execute db-migrate-${SHORT_SHA} \
           --region=asia-northeast1 \
           --format="value(name)" || echo "")
         
-        if [ -n "$EXECUTION_NAME" ]; then
+        if [ -n "$$EXECUTION_NAME" ]; then
           echo "Waiting for migration job to complete..."
           # 最大10分待機（600秒）
           for i in {1..60}; do
-            STATUS=$(gcloud run jobs executions describe $EXECUTION_NAME \
+            STATUS=$$(gcloud run jobs executions describe $$EXECUTION_NAME \
               --region=asia-northeast1 \
               --format="value(status.conditions[0].type)" 2>/dev/null || echo "Unknown")
             
-            if [ "$STATUS" = "Complete" ] || [ "$STATUS" = "Succeeded" ]; then
+            if [ "$$STATUS" = "Complete" ] || [ "$$STATUS" = "Succeeded" ]; then
               echo "Migration job completed successfully"
               break
             fi
             
-            if [ "$STATUS" = "Failed" ]; then
+            if [ "$$STATUS" = "Failed" ]; then
               echo "Migration job failed"
               exit 1
             fi
