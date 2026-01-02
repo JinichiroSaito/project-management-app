@@ -84,12 +84,25 @@ async function ensureProjectRoute(project) {
                                 Object.keys(project.reviewer_approvals).length > 0;
   
   if (project.final_approver_user_id && hasReviewerApprovals) {
-    console.log('[Ensure Project Route] Route already set, returning project:', {
+    // 早期リターンする場合でも、データベースから最新のreviewer_approvalsを取得して返す
+    // これにより、他の審査者が承認した最新の情報が反映される
+    const latestProjectResult = await db.query(
+      'SELECT reviewer_approvals FROM projects WHERE id = $1',
+      [project.id]
+    );
+    const latestReviewerApprovals = latestProjectResult.rows[0]?.reviewer_approvals || {};
+    
+    console.log('[Ensure Project Route] Route already set, returning project with latest approvals:', {
       projectId: project.id,
       final_approver_user_id: project.final_approver_user_id,
-      reviewer_approvals_keys: Object.keys(project.reviewer_approvals || {})
+      reviewer_approvals_keys_from_db: Object.keys(latestReviewerApprovals),
+      reviewer_approvals_keys_from_project: Object.keys(project.reviewer_approvals || {})
     });
-    return project;
+    
+    return {
+      ...project,
+      reviewer_approvals: latestReviewerApprovals
+    };
   }
   
   const route = await getApprovalRouteByAmount(parseFloat(project.requested_amount || 0));
