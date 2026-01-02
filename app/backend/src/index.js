@@ -1104,6 +1104,14 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     });
     
     if (existingApproval && existingApproval.status) {
+      console.log('[Reviewer Approve] Existing approval found:', {
+        userId,
+        userIdKey,
+        existingApproval,
+        finalDecision,
+        existingStatus: existingApproval.status
+      });
+      
       // 既に却下済みの場合、最新の状態を返す（エラーではなく成功として扱う）
       if (existingApproval.status === 'rejected' && finalDecision === 'rejected') {
         console.log('[Reviewer Approve] Already rejected, returning current state');
@@ -1114,11 +1122,15 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
         });
       }
       // 承認済みの場合はエラー
+      console.log('[Reviewer Approve] Already approved/rejected, returning error');
       return res.status(400).json({ 
         error: `You have already ${existingApproval.status === 'approved' ? 'approved' : 'rejected'} this project`,
-        reviewer_approvals: currentApprovals
+        reviewer_approvals: currentApprovals,
+        existing_approval: existingApproval
       });
     }
+    
+    console.log('[Reviewer Approve] No existing approval found, proceeding with new approval/rejection');
     
     // 承認または却下を追加（文字列キーで統一）
     const updatedApprovals = { ...currentApprovals };
