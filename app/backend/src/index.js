@@ -2838,7 +2838,6 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
          WHERE id = $4`,
         [updatedApprovals, review_comment || null, currentUser.rows[0].id, id]
       );
-<<<<<<< HEAD
       
       // すべての審査者が承認したか確認
       const allReviewers = await db.query(
@@ -2916,7 +2915,6 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
         message: 'Project application rejected successfully'
       });
     }
->>>>>>> c2b93ca (Fix: 審査員の却下処理を修正 - 却下時のコメント必須チェック追加、エラーハンドリング改善、詳細ログ追加)
   } catch (error) {
     return handleError(res, error, 'Review Project Application');
   }
