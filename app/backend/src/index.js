@@ -1254,7 +1254,26 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
       });
     }
 
-    res.json({ success: true, reviewer_approvals: finalApprovals });
+    // 更新後の最新のプロジェクト情報を取得して返す
+    const updatedProjectResult = await db.query(
+      'SELECT reviewer_approvals, application_status, status FROM projects WHERE id = $1',
+      [id]
+    );
+    const latestApprovals = updatedProjectResult.rows[0]?.reviewer_approvals || {};
+    
+    console.log('[Reviewer Approve] Returning latest approvals:', {
+      userId,
+      userIdKey,
+      latestApprovals,
+      latestApprovalsKeys: Object.keys(latestApprovals)
+    });
+    
+    res.json({ 
+      success: true, 
+      reviewer_approvals: latestApprovals,
+      application_status: updatedProjectResult.rows[0]?.application_status,
+      status: updatedProjectResult.rows[0]?.status
+    });
   } catch (error) {
     console.error('[Reviewer Approve] Error occurred:', {
       error: error.message,

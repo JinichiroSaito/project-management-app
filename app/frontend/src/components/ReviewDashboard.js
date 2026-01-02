@@ -431,25 +431,37 @@ const ReviewDashboard = () => {
     if (!status) return null;
     const approvals = status.reviewer_approvals || {};
     const reviewers = status.reviewers || [];
-    const allApproved = reviewers.every((r) => approvals[r.id]?.status === 'approved');
+    
+    // 承認状態を取得するヘルパー関数（数値キーと文字列キーの両方をチェック）
+    const getApprovalStatus = (reviewerId) => {
+      const stringKey = String(reviewerId);
+      return approvals[stringKey] || approvals[reviewerId] || approvals[Number(reviewerId)] || null;
+    };
+    
+    const allApproved = reviewers.every((r) => getApprovalStatus(r.id)?.status === 'approved');
     const isReviewer = reviewers.some((r) => r.id === userInfo?.id);
-    const reviewerApproved = approvals[userInfo?.id]?.status === 'approved';
+    const reviewerApproved = getApprovalStatus(userInfo?.id)?.status === 'approved';
     const isFinalApprover = status.final_approver_user_id === userInfo?.id;
     return (
       <div className="mt-2 text-xs text-gray-700 space-y-1">
         <div className="font-semibold">{t('review.approval.flow', 'Approval Flow')}</div>
         <div>
           <span className="font-medium">{t('review.approval.reviewers', 'Reviewers')}:</span>{' '}
-          {reviewers.map((r) => (
-            <span key={r.id} className="inline-flex items-center mr-2">
-              {r.name || r.email}
-              <span className="ml-1">
-                {approvals[r.id]?.status === 'approved'
-                  ? renderStatusBadge(t('review.approval.approved', 'Approved'), 'ok')
-                  : renderStatusBadge(t('review.approval.pending', 'Pending'), 'default')}
+          {reviewers.map((r) => {
+            const approval = getApprovalStatus(r.id);
+            return (
+              <span key={r.id} className="inline-flex items-center mr-2">
+                {r.name || r.email}
+                <span className="ml-1">
+                  {approval?.status === 'approved'
+                    ? renderStatusBadge(t('review.approval.approved', 'Approved'), 'ok')
+                    : approval?.status === 'rejected'
+                      ? renderStatusBadge(t('review.approval.rejected', 'Rejected'), 'missing')
+                      : renderStatusBadge(t('review.approval.pending', 'Pending'), 'default')}
+                </span>
               </span>
-            </span>
-          ))}
+            );
+          })}
         </div>
         <div>
           <span className="font-medium">{t('review.approval.final', 'Final Approver')}:</span>{' '}
