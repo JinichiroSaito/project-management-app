@@ -29,6 +29,20 @@ async function getApprovalRouteByAmount(amount) {
 function buildReviewerApprovals(project, reviewers) {
   const current = project.reviewer_approvals || {};
   const base = {};
+  
+  // まず、既存の承認情報をすべて保持（reviewersに含まれていない審査者の承認情報も保持）
+  Object.keys(current).forEach(key => {
+    const existingApproval = current[key];
+    // 空のオブジェクトの場合はスキップ
+    if (existingApproval && typeof existingApproval === 'object' && Object.keys(existingApproval).length > 0) {
+      // statusが設定されている場合は保持
+      if (existingApproval.status) {
+        base[key] = existingApproval;
+      }
+    }
+  });
+  
+  // 次に、reviewersに含まれている審査者の承認情報を設定（既存の情報がない場合のみpendingで初期化）
   reviewers.forEach((rid) => {
     // JSONBのキーは文字列として保存されるため、文字列キーを使用
     const key = String(rid);
@@ -55,7 +69,8 @@ function buildReviewerApprovals(project, reviewers) {
     // 既存の承認情報があり、statusが設定されている場合はそれを保持、ない場合はpendingで初期化
     if (existingApproval && existingApproval.status) {
       base[key] = existingApproval;
-    } else {
+    } else if (!base[key]) {
+      // 既にbaseに存在する場合は上書きしない（既存の承認情報を優先）
       base[key] = { status: 'pending', updated_at: null };
     }
   });
