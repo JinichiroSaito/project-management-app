@@ -1066,9 +1066,26 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     // 既存のreviewer_approvalsを保存（上書きを防ぐため）
     const savedReviewerApprovals = currentProject.reviewer_approvals || {};
     
+    // ensureProjectRouteを呼び出す前に、データベースから最新のreviewer_approvalsを取得
+    // これにより、他の審査者が承認した最新の情報を取得できる
+    const beforeEnsureRouteResult = await db.query(
+      'SELECT reviewer_approvals FROM projects WHERE id = $1',
+      [id]
+    );
+    const latestReviewerApprovalsBeforeRoute = beforeEnsureRouteResult.rows[0]?.reviewer_approvals || {};
+    
+    // 既存の承認情報と最新の承認情報をマージ（最新のデータを優先）
+    const mergedApprovals = { ...savedReviewerApprovals, ...latestReviewerApprovalsBeforeRoute };
+    
+    // マージした承認情報でプロジェクトを更新（ensureProjectRouteが最新の情報を使用できるようにする）
+    const projectWithLatestApprovals = {
+      ...currentProject,
+      reviewer_approvals: mergedApprovals
+    };
+    
     // ensureProjectRouteを呼び出す（final_approver_user_idとproject_reviewersを設定するため）
     // ただし、既存の承認情報がある場合は、ensureProjectRouteが上書きしないようにする
-    const project = await ensureProjectRoute(currentProject);
+    const project = await ensureProjectRoute(projectWithLatestApprovals);
     
     // ensureProjectRouteの後に、データベースから最新のreviewer_approvalsを再取得
     const latestProjectResult = await db.query(
@@ -1079,21 +1096,21 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     
     // 既存の承認情報を復元（ensureProjectRouteが上書きした場合に備える）
     // 既存の承認情報がある場合は、それを優先してマージ
-    if (savedReviewerApprovals && Object.keys(savedReviewerApprovals).length > 0) {
+    if (mergedApprovals && Object.keys(mergedApprovals).length > 0) {
       // 既存の承認情報をマージ（既存のデータを優先）
-      latestReviewerApprovals = { ...latestReviewerApprovals, ...savedReviewerApprovals };
+      latestReviewerApprovals = { ...latestReviewerApprovals, ...mergedApprovals };
       
       // もしensureProjectRouteが上書きした場合は、データベースを更新
       const currentDbApprovals = latestProjectResult.rows[0]?.reviewer_approvals || {};
       const dbApprovalsKeys = Object.keys(currentDbApprovals);
-      const savedApprovalsKeys = Object.keys(savedReviewerApprovals);
+      const mergedApprovalsKeys = Object.keys(mergedApprovals);
       
       // 既存の承認情報が失われている場合は、復元する
-      const hasLostData = savedApprovalsKeys.some(key => {
-        const savedApproval = savedReviewerApprovals[key];
+      const hasLostData = mergedApprovalsKeys.some(key => {
+        const savedApproval = mergedApprovals[key];
         const dbApproval = currentDbApprovals[key];
         // 既存の承認情報があり、statusが設定されている場合
-        if (savedApproval && savedApproval.status && (!dbApproval || !dbApproval.status)) {
+        if (savedApproval && savedApproval.status && savedApproval.status !== 'pending' && (!dbApproval || !dbApproval.status || dbApproval.status === 'pending')) {
           return true;
         }
         return false;
@@ -1105,6 +1122,12 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
           'UPDATE projects SET reviewer_approvals = $1::jsonb WHERE id = $2',
           [latestReviewerApprovals, id]
         );
+        // データベースを更新したので、最新の承認情報を再取得
+        const afterRestoreResult = await db.query(
+          'SELECT reviewer_approvals FROM projects WHERE id = $1',
+          [id]
+        );
+        latestReviewerApprovals = afterRestoreResult.rows[0]?.reviewer_approvals || {};
       }
     }
 
