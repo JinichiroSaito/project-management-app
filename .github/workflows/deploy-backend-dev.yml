@@ -96,10 +96,39 @@ jobs:
           
           # マイグレーションを実行
           echo "Executing migration job: $JOB_NAME"
-          gcloud run jobs execute $JOB_NAME \
+          EXECUTION_NAME=$(gcloud run jobs execute $JOB_NAME \
             --region=${{ env.REGION }} \
-            --wait \
-            --project=${{ env.PROJECT_ID }}
+            --format="value(name)" \
+            --project=${{ env.PROJECT_ID }} || echo "")
+          
+          if [ -n "$EXECUTION_NAME" ]; then
+            echo "Waiting for migration job to complete..."
+            # 最大10分待機（600秒、10秒間隔で60回）
+            for i in {1..60}; do
+              STATUS=$(gcloud run jobs executions describe $EXECUTION_NAME \
+                --region=${{ env.REGION }} \
+                --format="value(status.conditions[0].type)" \
+                --project=${{ env.PROJECT_ID }} 2>/dev/null || echo "Unknown")
+              
+              if [ "$STATUS" = "Complete" ] || [ "$STATUS" = "Succeeded" ]; then
+                echo "Migration job completed successfully"
+                break
+              fi
+              
+              if [ "$STATUS" = "Failed" ]; then
+                echo "Migration job failed"
+                # エラーログを取得
+                gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name=$JOB_NAME AND severity>=ERROR" \
+                  --limit=10 \
+                  --format="table(timestamp,severity,textPayload)" \
+                  --project=${{ env.PROJECT_ID }} || true
+                exit 1
+              fi
+              
+              echo "Waiting for migration job... ($i/60)"
+              sleep 10
+            done
+          fi
           
           # マイグレーションJobを削除
           echo "Cleaning up migration job: $JOB_NAME"
