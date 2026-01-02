@@ -2712,8 +2712,23 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
     const { id } = req.params;
     const { decision, review_comment } = req.body; // decision: 'approved' or 'rejected'
     
+    console.log('[Review] Review request received:', {
+      projectId: id,
+      decision: decision,
+      hasComment: !!review_comment,
+      commentLength: review_comment?.length || 0,
+      userEmail: req.user?.email
+    });
+    
     if (!decision || !['approved', 'rejected'].includes(decision)) {
+      console.error('[Review] Invalid decision:', decision);
       return res.status(400).json({ error: 'Decision must be either "approved" or "rejected"' });
+    }
+    
+    // 却下の場合はコメントが必須
+    if (decision === 'rejected' && (!review_comment || review_comment.trim().length === 0)) {
+      console.error('[Review] Rejection requires comment');
+      return res.status(400).json({ error: 'Review comment is required when rejecting' });
     }
     
     // 現在のユーザー情報を取得
@@ -2723,6 +2738,7 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
     );
     
     if (currentUser.rows.length === 0) {
+      console.error('[Review] User not found:', req.user.email);
       return res.status(404).json({ error: 'User not found' });
     }
     
@@ -2733,6 +2749,7 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
     );
     
     if (projectResult.rows.length === 0) {
+      console.error('[Review] Project not found:', id);
       return res.status(404).json({ error: 'Project not found' });
     }
     
@@ -2745,7 +2762,7 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
     const projectReviewers = await db.query(
       'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1',
       [id]
-    );
+    ).catch(() => ({ rows: [] })); // テーブルが存在しない場合のエラーハンドリング
     const reviewerIds = projectReviewers.rows.map(r => r.reviewer_id);
     
     // 現在のユーザーが審査者のいずれかであることを確認
@@ -2761,6 +2778,11 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
     });
     
     if (!isAssignedReviewer) {
+      console.error('[Review] User is not assigned reviewer:', {
+        userId: userId,
+        projectReviewerId: projectData.reviewer_id,
+        reviewerIds: reviewerIds
+      });
       return res.status(403).json({ 
         error: 'Only the assigned reviewer can review this application',
         details: {
@@ -2771,8 +2793,26 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
       });
     }
     
+    // 既に審査済みの場合はエラー（却下された場合も含む）
+    if (projectData.application_status === 'approved' || projectData.application_status === 'rejected') {
+      console.warn('[Review] Project already reviewed:', {
+        projectId: id,
+        currentStatus: projectData.application_status
+      });
+      return res.status(400).json({ 
+        error: `Project application has already been ${projectData.application_status}` 
+      });
+    }
+    
     if (projectData.application_status !== 'submitted') {
-      return res.status(400).json({ error: 'Project application must be submitted before review' });
+      console.warn('[Review] Project not in submitted status:', {
+        projectId: id,
+        currentStatus: projectData.application_status
+      });
+      return res.status(400).json({ 
+        error: 'Project application must be submitted before review',
+        currentStatus: projectData.application_status
+      });
     }
     
     // 承認の場合：reviewer_approvalsを更新（並列承認フローに対応）
@@ -2798,6 +2838,7 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
          WHERE id = $4`,
         [updatedApprovals, review_comment || null, currentUser.rows[0].id, id]
       );
+<<<<<<< HEAD
       
       // すべての審査者が承認したか確認
       const allReviewers = await db.query(
@@ -2821,23 +2862,61 @@ app.post('/api/projects/:id/review', authenticateToken, requireApproved, async (
           : 'Reviewer approval recorded.'
       });
     } else {
-      // 却下の場合：application_statusを'rejected'に変更
+      // 却下の場合：application_statusを'rejected'に変更、statusを'on_hold'に変更
       const result = await db.query(
         `UPDATE projects 
          SET application_status = $1, 
              review_comment = $2,
              reviewed_at = CURRENT_TIMESTAMP,
              reviewed_by = $3,
+             status = $4,
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $4 RETURNING *`,
-        ['rejected', review_comment || null, currentUser.rows[0].id, id]
+         WHERE id = $5 RETURNING *`,
+        ['rejected', review_comment || null, currentUser.rows[0].id, 'on_hold', id]
       );
       
+      // 更新後のプロジェクト情報を再取得（reviewersなどの最新情報を含む）
+      let updatedProjectData = result.rows[0];
+      try {
+        const updatedProject = await db.query(
+          `SELECT p.*, 
+                  u1.name as executor_name, u1.email as executor_email,
+                  u2.name as reviewer_name, u2.email as reviewer_email,
+                  COALESCE(
+                    json_agg(
+                      json_build_object(
+                        'id', u3.id,
+                        'name', u3.name,
+                        'email', u3.email
+                      )
+                    ) FILTER (WHERE u3.id IS NOT NULL),
+                    '[]'::json
+                  ) as reviewers
+           FROM projects p
+           LEFT JOIN users u1 ON p.executor_id = u1.id
+           LEFT JOIN users u2 ON p.reviewer_id = u2.id
+           LEFT JOIN project_reviewers pr ON p.id = pr.project_id
+           LEFT JOIN users u3 ON pr.reviewer_id = u3.id
+           WHERE p.id = $1
+           GROUP BY p.id, u1.id, u1.name, u1.email, u2.id, u2.name, u2.email`,
+          [id]
+        );
+        
+        if (updatedProject.rows.length > 0) {
+          updatedProjectData = updatedProject.rows[0];
+        }
+      } catch (fetchError) {
+        console.error('[Review] Error fetching updated project data:', fetchError);
+        // エラーが発生しても、UPDATE結果を返す
+        console.warn('[Review] Using UPDATE result instead of re-fetched data');
+      }
+      
       res.json({
-        project: result.rows[0],
+        project: updatedProjectData,
         message: 'Project application rejected successfully'
       });
     }
+>>>>>>> c2b93ca (Fix: 審査員の却下処理を修正 - 却下時のコメント必須チェック追加、エラーハンドリング改善、詳細ログ追加)
   } catch (error) {
     return handleError(res, error, 'Review Project Application');
   }
