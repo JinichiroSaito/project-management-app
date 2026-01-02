@@ -300,14 +300,23 @@ const ReviewDashboard = () => {
   const handleReviewerApprove = async (project) => {
     setApprovalLoading((prev) => ({ ...prev, [project.id]: true }));
     try {
-      await api.post(`/api/projects/${project.id}/reviewer-approve`, {
+      const response = await api.post(`/api/projects/${project.id}/reviewer-approve`, {
         decision: 'approved'
       });
+      console.log('[ReviewDashboard] Reviewer approve success:', response.data);
       await refreshApprovalStatus(project.id);
       setShowReviewerCommentInput((prev) => ({ ...prev, [project.id]: false }));
       setReviewerComments((prev) => ({ ...prev, [project.id]: '' }));
+      // プロジェクトリストを更新
+      fetchPendingReviews();
+      fetchApprovedProjects();
     } catch (error) {
       console.error('Reviewer approve failed:', error);
+      console.error('Error details:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message
+      });
       alert(error.response?.data?.error || 'Failed to approve as reviewer');
     } finally {
       setApprovalLoading((prev) => ({ ...prev, [project.id]: false }));
