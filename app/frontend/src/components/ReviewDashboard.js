@@ -333,9 +333,29 @@ const ReviewDashboard = () => {
       console.error('Error details:', {
         status: error.response?.status,
         data: error.response?.data,
-        message: error.message
+        message: error.message,
+        request: {
+          url: error.config?.url,
+          method: error.config?.method,
+          data: error.config?.data
+        }
       });
-      alert(error.response?.data?.error || 'Failed to reject as reviewer');
+      
+      // エラーメッセージを詳細に表示
+      let errorMessage = 'Failed to reject as reviewer';
+      if (error.response?.data) {
+        if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        } else if (error.response.data.message) {
+          errorMessage = error.response.data.message;
+        } else {
+          errorMessage = `Error ${error.response.status}: ${JSON.stringify(error.response.data)}`;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert(errorMessage);
     } finally {
       setApprovalLoading((prev) => ({ ...prev, [project.id]: false }));
     }
