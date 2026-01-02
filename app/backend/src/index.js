@@ -1124,12 +1124,31 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     });
 
     // 楽観的ロック：reviewer_approvalsが変更されていないことを確認してから更新
+    // ただし、既存の承認情報を保持するため、現在のデータベースの状態を再取得
+    const beforeUpdateResult = await db.query(
+      'SELECT reviewer_approvals FROM projects WHERE id = $1',
+      [id]
+    );
+    const dbApprovalsBeforeUpdate = beforeUpdateResult.rows[0]?.reviewer_approvals || {};
+    
+    // 既存の承認情報をマージ（既存のデータを優先）
+    const finalApprovals = { ...dbApprovalsBeforeUpdate, ...updatedApprovals };
+    
+    console.log('[Reviewer Approve] Final approvals to save:', {
+      userId,
+      userIdKey,
+      finalDecision,
+      dbApprovalsBeforeUpdate,
+      updatedApprovals,
+      finalApprovals
+    });
+    
     const updateResult = await db.query(
       `UPDATE projects 
        SET reviewer_approvals = $1::jsonb, updated_at = CURRENT_TIMESTAMP 
-       WHERE id = $2 AND (reviewer_approvals = $3::jsonb OR reviewer_approvals IS NULL)
+       WHERE id = $2
        RETURNING reviewer_approvals`,
-      [updatedApprovals, id, currentApprovals]
+      [finalApprovals, id]
     );
 
     if (updateResult.rows.length === 0) {
