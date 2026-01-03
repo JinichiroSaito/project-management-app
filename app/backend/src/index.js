@@ -1232,8 +1232,11 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
       userId,
       userIdKey,
       dbApprovalsBeforeUpdateKeys: Object.keys(dbApprovalsBeforeUpdate),
+      dbApprovalsBeforeUpdate: dbApprovalsBeforeUpdate,
       latestReviewerApprovalsKeys: Object.keys(latestReviewerApprovals),
+      latestReviewerApprovals: latestReviewerApprovals,
       updatedApprovalsKeys: Object.keys(updatedApprovals),
+      updatedApprovals: updatedApprovals,
       updatedApprovalsUserIdKey: updatedApprovals[userIdKey]
     });
     
@@ -1249,6 +1252,14 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     
     // 現在のユーザーの承認情報を確実に更新（文字列キーで統一）
     finalApprovals[userIdKey] = updatedApprovals[userIdKey];
+    
+    console.log('[Reviewer Approve] After setting userIdKey in finalApprovals:', {
+      userId,
+      userIdKey,
+      finalApprovalsKeys: Object.keys(finalApprovals),
+      finalApprovalsUserIdKey: finalApprovals[userIdKey],
+      finalApprovals: finalApprovals
+    });
     // 数値キーが存在する場合は削除
     if (finalApprovals[userId] && userId !== userIdKey) {
       delete finalApprovals[userId];
