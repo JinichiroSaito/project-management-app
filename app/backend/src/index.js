@@ -1259,63 +1259,22 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
       updatedApprovalsUserIdKey: updatedApprovals[userIdKey]
     });
     
-    // 既存の承認情報をマージ（updatedApprovalsを優先、既存の他の審査者の情報は保持）
-    // 重要：updatedApprovalsには現在のユーザーの承認情報が含まれているため、これをベースにする
-    // 1. updatedApprovalsをベースにする（現在のユーザーの承認情報を含む）
-    // 2. 他の審査者の承認情報をdbApprovalsBeforeUpdateから取得してマージ（現在のユーザーを除外）
-    // 3. 現在のユーザーの承認情報を確実に設定（文字列キーで統一）
+    // 既存の承認情報をマージ（dbApprovalsBeforeUpdateをベースにして、現在のユーザーの情報のみを更新）
+    // 重要：dbApprovalsBeforeUpdateをベースにして、updatedApprovalsの現在のユーザーの情報のみをマージする
+    // これにより、他の審査者の承認情報が失われることを防ぐ
+    // 1. dbApprovalsBeforeUpdateをベースにする（すべての審査者の承認情報を含む）
+    // 2. updatedApprovalsから現在のユーザーの承認情報のみを取得してマージ
+    // 3. 数値キーが存在する場合は削除（文字列キーで統一）
     
-    // 他の審査者の承認情報を取得（現在のユーザーを除外）
-    const otherReviewersApprovals = { ...dbApprovalsBeforeUpdate };
-    delete otherReviewersApprovals[userIdKey];
-    delete otherReviewersApprovals[userId];
-    delete otherReviewersApprovals[String(userId)];
+    // finalApprovalsを作成：dbApprovalsBeforeUpdateをベースにする
+    const finalApprovals = { ...dbApprovalsBeforeUpdate };
     
-    // finalApprovalsを作成：updatedApprovalsをベースにして、他の審査者の情報をマージ
-    // 重要：updatedApprovalsを最後にマージすることで、現在のユーザーの承認情報が確実に含まれるようにする
-    const finalApprovals = { 
-      ...otherReviewersApprovals,  // 他の審査者の承認情報（現在のユーザーを除外）
-      ...updatedApprovals  // updatedApprovals全体をマージ（現在のユーザーの承認情報を含む）
-    };
-    
-    // デバッグログ：finalApprovals作成直後の内容を確認
-    console.log('[Reviewer Approve] finalApprovals immediately after creation:', {
-      userIdKey,
-      finalApprovalsKeys: Object.keys(finalApprovals),
-      finalApprovalsHasUserIdKey: userIdKey in finalApprovals,
-      finalApprovalsUserIdKey: finalApprovals[userIdKey],
-      updatedApprovalsHasUserIdKey: userIdKey in updatedApprovals,
-      updatedApprovalsUserIdKey: updatedApprovals[userIdKey],
-      otherReviewersApprovalsKeys: Object.keys(otherReviewersApprovals),
-      updatedApprovalsKeys: Object.keys(updatedApprovals)
-    });
-    
-    // 現在のユーザーの承認情報を確実に設定（文字列キーで統一）
-    // これは必須：updatedApprovals[userIdKey]が確実に含まれるようにする
+    // updatedApprovalsから現在のユーザーの承認情報のみを取得してマージ
     if (updatedApprovals && updatedApprovals[userIdKey]) {
-      // オブジェクトのコピーを作成して設定
-      const approvalValue = { ...updatedApprovals[userIdKey] };
-      finalApprovals[userIdKey] = approvalValue;
-      
-      // 設定直後に確認
-      console.log('[Reviewer Approve] Setting userIdKey in finalApprovals:', {
+      finalApprovals[userIdKey] = { ...updatedApprovals[userIdKey] };
+      console.log('[Reviewer Approve] Merging current user approval from updatedApprovals:', {
         userIdKey,
-        value: approvalValue,
-        finalApprovalsKeysBefore: Object.keys(finalApprovals),
-        finalApprovalsUserIdKeyBefore: finalApprovals[userIdKey]
-      });
-      
-      // 再度確認（オブジェクト参照の問題を確認）
-      const checkValue = finalApprovals[userIdKey];
-      console.log('[Reviewer Approve] Immediately after setting, checking finalApprovals[userIdKey]:', {
-        userIdKey,
-        checkValue,
-        isUndefined: checkValue === undefined,
-        isNull: checkValue === null,
-        type: typeof checkValue,
-        finalApprovalsKeys: Object.keys(finalApprovals),
-        finalApprovalsHasOwnProperty: finalApprovals.hasOwnProperty(userIdKey),
-        finalApprovalsIn: userIdKey in finalApprovals
+        approval: finalApprovals[userIdKey]
       });
     } else {
       console.error('[Reviewer Approve] ERROR: updatedApprovals[userIdKey] is missing!', {
@@ -1325,52 +1284,47 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
       });
     }
     
+    // 数値キーが存在する場合は削除（文字列キーで統一）
+    if (finalApprovals[userId] && userId !== userIdKey) {
+      delete finalApprovals[userId];
+    }
+    
     // 数値キーが存在する場合は削除（文字列キーで統一するため）
-    // 重要：updatedApprovals作成時に数値キーを完全に除去しているため、
-    // ここでは数値キーが存在しないはずだが、念のため確認
-    // JavaScriptでは、数値キーと文字列キーが同じプロパティとして扱われる場合があるため、
-    // delete finalApprovals[userId]を実行すると、文字列キー'222'も削除される可能性がある
-    // そのため、数値キーを削除する必要はない（updatedApprovals作成時に既に除去済み）
-    // ただし、念のため確認ログを出力
-    if (userId in finalApprovals && userId !== userIdKey) {
-      console.warn('[Reviewer Approve] WARNING: Numeric key still exists in finalApprovals:', {
+    // dbApprovalsBeforeUpdateに数値キーが含まれている可能性があるため、確認して削除
+    if (finalApprovals[userId] && userId !== userIdKey) {
+      console.log('[Reviewer Approve] Numeric key found in finalApprovals, removing it:', {
         userId,
         userIdKey,
         hasNumericKey: userId in finalApprovals,
         hasStringKey: userIdKey in finalApprovals,
         numericKeyValue: finalApprovals[userId],
-        stringKeyValue: finalApprovals[userIdKey],
-        allKeys: Object.keys(finalApprovals)
+        stringKeyValue: finalApprovals[userIdKey]
       });
       
       // 数値キーを削除する前に、文字列キーが存在することを確認
       if (finalApprovals[userIdKey]) {
-        console.log('[Reviewer Approve] String key exists, preserving it before deleting numeric key');
-        // 文字列キーの値を保存
-        const stringKeyValue = { ...finalApprovals[userIdKey] };
+        // 文字列キーが存在する場合は、数値キーを削除するだけ
         delete finalApprovals[userId];
-        // 文字列キーが削除された場合は、再度設定
-        if (!finalApprovals[userIdKey]) {
-          console.log('[Reviewer Approve] String key was deleted, restoring it');
-          finalApprovals[userIdKey] = stringKeyValue;
-        }
+        console.log('[Reviewer Approve] Numeric key removed, string key preserved');
       } else {
-        // 文字列キーが存在しない場合は、数値キーの値を文字列キーに変換
+        // 文字列キーが存在しない場合は、数値キーの値を文字列キーに変換してから削除
         console.log('[Reviewer Approve] String key does not exist, converting numeric key to string key');
         finalApprovals[userIdKey] = { ...finalApprovals[userId] };
         delete finalApprovals[userId];
       }
-      
-      console.log('[Reviewer Approve] After handling numeric key:', {
-        userId,
-        userIdKey,
-        hasNumericKey: userId in finalApprovals,
-        hasStringKey: userIdKey in finalApprovals,
-        numericKeyValue: finalApprovals[userId],
-        stringKeyValue: finalApprovals[userIdKey],
-        allKeys: Object.keys(finalApprovals)
-      });
     }
+    
+    // デバッグログ：finalApprovals作成直後の内容を確認
+    console.log('[Reviewer Approve] finalApprovals immediately after creation:', {
+      userIdKey,
+      finalApprovalsKeys: Object.keys(finalApprovals),
+      finalApprovalsHasUserIdKey: userIdKey in finalApprovals,
+      finalApprovalsUserIdKey: finalApprovals[userIdKey],
+      updatedApprovalsHasUserIdKey: userIdKey in updatedApprovals,
+      updatedApprovalsUserIdKey: updatedApprovals[userIdKey],
+      dbApprovalsBeforeUpdateKeys: Object.keys(dbApprovalsBeforeUpdate),
+      updatedApprovalsKeys: Object.keys(updatedApprovals)
+    });
     
     // デバッグログ：finalApprovalsの内容を確認
     // 重要：JSON.parse(JSON.stringify())で深いコピーを作成してからログ出力
