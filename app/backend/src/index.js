@@ -1229,14 +1229,17 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     });
     
     // 既存の承認情報をマージ（updatedApprovalsを優先、既存の他の審査者の情報は保持）
-    // 1. まず、latestReviewerApprovals（ensureProjectRouteの後に取得した最新の承認情報）をベースにする
-    // 2. 次に、dbApprovalsBeforeUpdate（データベースの現在の状態）をマージ（最新の情報を優先）
-    // 3. 最後に、updatedApprovals（現在のユーザーの承認情報）を確実に追加
+    // 1. まず、dbApprovalsBeforeUpdate（データベースの現在の状態）をベースにする（すべての審査者の情報を含む）
+    // 2. 次に、latestReviewerApprovals（ensureProjectRouteの後に取得した最新の承認情報）をマージ（最新の情報を優先）
+    // 3. 最後に、updatedApprovals（現在のユーザーの承認情報）を確実に追加（承認または却下の情報を確実に保存）
     const finalApprovals = { 
-      ...latestReviewerApprovals,  // ensureProjectRouteの後に取得した最新の承認情報をベース
-      ...dbApprovalsBeforeUpdate,  // データベースの現在の状態をマージ（最新の情報を優先）
-      [userIdKey]: updatedApprovals[userIdKey]  // 現在のユーザーの承認情報を確実に追加
+      ...dbApprovalsBeforeUpdate,  // データベースの現在の状態をベース（すべての審査者の情報を含む）
+      ...latestReviewerApprovals,  // ensureProjectRouteの後に取得した最新の承認情報をマージ（最新の情報を優先）
+      ...updatedApprovals  // updatedApprovals全体をマージ（現在のユーザーの承認情報を確実に追加）
     };
+    
+    // 現在のユーザーの承認情報を確実に更新（文字列キーで統一）
+    finalApprovals[userIdKey] = updatedApprovals[userIdKey];
     // 数値キーが存在する場合は削除
     if (finalApprovals[userId] && userId !== userIdKey) {
       delete finalApprovals[userId];
