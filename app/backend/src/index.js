@@ -1200,16 +1200,35 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     console.log('[Reviewer Approve] No existing approval found, proceeding with new approval/rejection');
     
     // 承認または却下を追加（文字列キーで統一）
-    const updatedApprovals = { ...currentApprovals };
-    // 数値キーが存在する場合は削除して、文字列キーで統一
-    if (updatedApprovals[userId] && !updatedApprovals[userIdKey]) {
-      delete updatedApprovals[userId];
-    }
+    // 重要：数値キーを完全に除去してから文字列キーを設定する
+    const updatedApprovals = {};
+    // currentApprovalsから数値キーを除外して、文字列キーで統一したオブジェクトを作成
+    Object.keys(currentApprovals).forEach(key => {
+      // 数値キー（現在のユーザーのID）は除外
+      if (Number(key) === userId && key !== userIdKey) {
+        // 数値キーは除外（文字列キーに変換される）
+        return;
+      }
+      // 文字列キーとして保存
+      updatedApprovals[key] = currentApprovals[key];
+    });
+    
+    // 現在のユーザーの承認情報を文字列キーで設定
     updatedApprovals[userIdKey] = { 
       status: finalDecision === 'approved' ? 'approved' : 'rejected', 
       review_comment: trimmedComment || null,
       updated_at: new Date().toISOString() 
     };
+    
+    // デバッグログ：数値キーが完全に除去されたことを確認
+    console.log('[Reviewer Approve] updatedApprovals after cleaning numeric keys:', {
+      userId,
+      userIdKey,
+      updatedApprovalsKeys: Object.keys(updatedApprovals),
+      hasNumericKey: userId in updatedApprovals,
+      hasStringKey: userIdKey in updatedApprovals,
+      updatedApprovals
+    });
     
     console.log('[Reviewer Approve] Updating approvals:', {
       userId,
@@ -1307,25 +1326,28 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     }
     
     // 数値キーが存在する場合は削除（文字列キーで統一するため）
-    // 重要：JavaScriptでは、数値キーと文字列キーが同じプロパティとして扱われる場合がある
-    // そのため、delete finalApprovals[userId]が実行されると、文字列キー'222'も削除される可能性がある
-    if (finalApprovals[userId] && userId !== userIdKey) {
-      console.log('[Reviewer Approve] Before deleting numeric key:', {
+    // 重要：updatedApprovals作成時に数値キーを完全に除去しているため、
+    // ここでは数値キーが存在しないはずだが、念のため確認
+    // JavaScriptでは、数値キーと文字列キーが同じプロパティとして扱われる場合があるため、
+    // delete finalApprovals[userId]を実行すると、文字列キー'222'も削除される可能性がある
+    // そのため、数値キーを削除する必要はない（updatedApprovals作成時に既に除去済み）
+    // ただし、念のため確認ログを出力
+    if (userId in finalApprovals && userId !== userIdKey) {
+      console.warn('[Reviewer Approve] WARNING: Numeric key still exists in finalApprovals:', {
         userId,
         userIdKey,
         hasNumericKey: userId in finalApprovals,
         hasStringKey: userIdKey in finalApprovals,
         numericKeyValue: finalApprovals[userId],
         stringKeyValue: finalApprovals[userIdKey],
-        allKeys: Object.keys(finalApprovals),
-        finalApprovals: JSON.parse(JSON.stringify(finalApprovals))
+        allKeys: Object.keys(finalApprovals)
       });
       
       // 数値キーを削除する前に、文字列キーが存在することを確認
       if (finalApprovals[userIdKey]) {
         console.log('[Reviewer Approve] String key exists, preserving it before deleting numeric key');
         // 文字列キーの値を保存
-        const stringKeyValue = finalApprovals[userIdKey];
+        const stringKeyValue = { ...finalApprovals[userIdKey] };
         delete finalApprovals[userId];
         // 文字列キーが削除された場合は、再度設定
         if (!finalApprovals[userIdKey]) {
@@ -1333,18 +1355,20 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
           finalApprovals[userIdKey] = stringKeyValue;
         }
       } else {
+        // 文字列キーが存在しない場合は、数値キーの値を文字列キーに変換
+        console.log('[Reviewer Approve] String key does not exist, converting numeric key to string key');
+        finalApprovals[userIdKey] = { ...finalApprovals[userId] };
         delete finalApprovals[userId];
       }
       
-      console.log('[Reviewer Approve] After deleting numeric key:', {
+      console.log('[Reviewer Approve] After handling numeric key:', {
         userId,
         userIdKey,
         hasNumericKey: userId in finalApprovals,
         hasStringKey: userIdKey in finalApprovals,
         numericKeyValue: finalApprovals[userId],
         stringKeyValue: finalApprovals[userIdKey],
-        allKeys: Object.keys(finalApprovals),
-        finalApprovals: JSON.parse(JSON.stringify(finalApprovals))
+        allKeys: Object.keys(finalApprovals)
       });
     }
     
