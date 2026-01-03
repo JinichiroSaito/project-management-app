@@ -1244,26 +1244,35 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     // 1. まず、dbApprovalsBeforeUpdate（データベースの現在の状態）をベースにする（すべての審査者の情報を含む）
     // 2. 次に、latestReviewerApprovals（ensureProjectRouteの後に取得した最新の承認情報）をマージ（最新の情報を優先）
     // 3. 最後に、updatedApprovals（現在のユーザーの承認情報）を確実に追加（承認または却下の情報を確実に保存）
+    // 重要：updatedApprovals[userIdKey]を確実に含めるため、最後にマージし、その後で明示的に設定する
     const finalApprovals = { 
       ...dbApprovalsBeforeUpdate,  // データベースの現在の状態をベース（すべての審査者の情報を含む）
       ...latestReviewerApprovals,  // ensureProjectRouteの後に取得した最新の承認情報をマージ（最新の情報を優先）
       ...updatedApprovals  // updatedApprovals全体をマージ（現在のユーザーの承認情報を確実に追加）
     };
     
-    // 現在のユーザーの承認情報を確実に更新（文字列キーで統一）
-    finalApprovals[userIdKey] = updatedApprovals[userIdKey];
+    // 現在のユーザーの承認情報を確実に設定（文字列キーで統一）
+    // これは必須：updatedApprovals[userIdKey]が確実に含まれるようにする
+    // マージの順序に関係なく、確実に現在のユーザーの承認情報を設定する
+    if (updatedApprovals && updatedApprovals[userIdKey]) {
+      finalApprovals[userIdKey] = { ...updatedApprovals[userIdKey] };
+    }
     
+    // 数値キーが存在する場合は削除（文字列キーで統一するため）
+    if (finalApprovals[userId] && userId !== userIdKey) {
+      delete finalApprovals[userId];
+    }
+    
+    // デバッグログ：finalApprovalsの内容を確認
     console.log('[Reviewer Approve] After setting userIdKey in finalApprovals:', {
       userId,
       userIdKey,
       finalApprovalsKeys: Object.keys(finalApprovals),
       finalApprovalsUserIdKey: finalApprovals[userIdKey],
+      updatedApprovalsUserIdKey: updatedApprovals[userIdKey],
+      hasUserIdKey: !!finalApprovals[userIdKey],
       finalApprovals: finalApprovals
     });
-    // 数値キーが存在する場合は削除
-    if (finalApprovals[userId] && userId !== userIdKey) {
-      delete finalApprovals[userId];
-    }
     
     console.log('[Reviewer Approve] Final approvals to save:', {
       userId,
