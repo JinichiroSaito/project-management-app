@@ -1253,18 +1253,50 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     delete otherReviewersApprovals[String(userId)];
     
     // finalApprovalsを作成：updatedApprovalsをベースにして、他の審査者の情報をマージ
+    // 重要：updatedApprovalsを最後にマージすることで、現在のユーザーの承認情報が確実に含まれるようにする
     const finalApprovals = { 
       ...otherReviewersApprovals,  // 他の審査者の承認情報（現在のユーザーを除外）
       ...updatedApprovals  // updatedApprovals全体をマージ（現在のユーザーの承認情報を含む）
     };
     
+    // デバッグログ：finalApprovals作成直後の内容を確認
+    console.log('[Reviewer Approve] finalApprovals immediately after creation:', {
+      userIdKey,
+      finalApprovalsKeys: Object.keys(finalApprovals),
+      finalApprovalsHasUserIdKey: userIdKey in finalApprovals,
+      finalApprovalsUserIdKey: finalApprovals[userIdKey],
+      updatedApprovalsHasUserIdKey: userIdKey in updatedApprovals,
+      updatedApprovalsUserIdKey: updatedApprovals[userIdKey],
+      otherReviewersApprovalsKeys: Object.keys(otherReviewersApprovals),
+      updatedApprovalsKeys: Object.keys(updatedApprovals)
+    });
+    
     // 現在のユーザーの承認情報を確実に設定（文字列キーで統一）
     // これは必須：updatedApprovals[userIdKey]が確実に含まれるようにする
     if (updatedApprovals && updatedApprovals[userIdKey]) {
-      finalApprovals[userIdKey] = { ...updatedApprovals[userIdKey] };
+      // オブジェクトのコピーを作成して設定
+      const approvalValue = { ...updatedApprovals[userIdKey] };
+      finalApprovals[userIdKey] = approvalValue;
+      
+      // 設定直後に確認
       console.log('[Reviewer Approve] Setting userIdKey in finalApprovals:', {
         userIdKey,
-        value: finalApprovals[userIdKey]
+        value: approvalValue,
+        finalApprovalsKeysBefore: Object.keys(finalApprovals),
+        finalApprovalsUserIdKeyBefore: finalApprovals[userIdKey]
+      });
+      
+      // 再度確認（オブジェクト参照の問題を確認）
+      const checkValue = finalApprovals[userIdKey];
+      console.log('[Reviewer Approve] Immediately after setting, checking finalApprovals[userIdKey]:', {
+        userIdKey,
+        checkValue,
+        isUndefined: checkValue === undefined,
+        isNull: checkValue === null,
+        type: typeof checkValue,
+        finalApprovalsKeys: Object.keys(finalApprovals),
+        finalApprovalsHasOwnProperty: finalApprovals.hasOwnProperty(userIdKey),
+        finalApprovalsIn: userIdKey in finalApprovals
       });
     } else {
       console.error('[Reviewer Approve] ERROR: updatedApprovals[userIdKey] is missing!', {
@@ -1287,7 +1319,7 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
       finalApprovalsUserIdKey: finalApprovals[userIdKey],
       updatedApprovalsUserIdKey: updatedApprovals[userIdKey],
       hasUserIdKey: !!finalApprovals[userIdKey],
-      finalApprovals: finalApprovals
+      finalApprovals: JSON.parse(JSON.stringify(finalApprovals)) // 深いコピーを作成してログ出力
     });
     
     console.log('[Reviewer Approve] Final approvals to save:', {
