@@ -150,17 +150,24 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
   };
 
   const handleSubmitApplication = async () => {
-    // 審査者は承認ルート（approval_routes）に基づいて自動的に設定されるため、バリデーションは不要
+    // ファイルがアップロードされているかチェック
+    const hasFile = selectedFile || project?.application_file_url;
+    
+    if (!hasFile) {
+      setError(t('projectApplication.fileRequired', 'Please upload an application document (PPT/PDF) before submitting for review.'));
+      return;
+    }
 
     try {
       setLoading(true);
+      setError('');
       await api.post(`/api/projects/${project.id}/submit`);
       if (onComplete) {
         onComplete();
       }
     } catch (error) {
       console.error('Error submitting application:', error);
-      setError(error.response?.data?.error || 'Failed to submit application');
+      setError(error.response?.data?.error || t('projectApplication.error.submit', 'Failed to submit application'));
     } finally {
       setLoading(false);
     }
@@ -741,8 +748,9 @@ const ProjectApplicationForm = ({ project, onComplete, onCancel }) => {
               <button
                 type="button"
                 onClick={handleSubmitApplication}
-                disabled={loading}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50"
+                disabled={loading || (!selectedFile && !project?.application_file_url)}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                title={(!selectedFile && !project?.application_file_url) ? t('projectApplication.fileRequired', 'Please upload an application document (PPT/PDF) before submitting for review.') : ''}
               >
                 {t('projectApplication.submit', 'Submit for Review')}
               </button>

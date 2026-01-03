@@ -316,6 +316,7 @@ export const translations = {
     'projectApplication.file.pptTooLarge': 'PPT files larger than 20MB cannot be processed. Please convert to PDF format and upload.',
     'projectApplication.file.requirement.4': 'Note: PPT files larger than 20MB cannot be processed. Please use PDF format for files larger than 20MB.',
     'projectApplication.uploadedFile': 'Uploaded File',
+    'projectApplication.fileRequired': 'Please upload an application document (PPT/PDF) before submitting for review.',
     
     // Document Analysis
     'projectApplication.analysis.title': 'Document Analysis',
@@ -758,6 +759,7 @@ export const translations = {
     'projectApplication.file.pptTooLarge': '20MB以上のPPTファイルは処理できません。PDF形式に変換してからアップロードしてください。',
     'projectApplication.file.requirement.4': '注意：20MB以上のPPTファイルは処理できません。20MB以上のファイルはPDF形式でアップロードしてください。',
     'projectApplication.uploadedFile': 'アップロードされたファイル',
+    'projectApplication.fileRequired': '審査に提出する前に、申請書類（PPT/PDF）をアップロードしてください。',
     
     // Document Analysis
     'projectApplication.analysis.title': '文書分析',
