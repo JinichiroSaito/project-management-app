@@ -1307,20 +1307,80 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     }
     
     // 数値キーが存在する場合は削除（文字列キーで統一するため）
+    // 重要：JavaScriptでは、数値キーと文字列キーが同じプロパティとして扱われる場合がある
+    // そのため、delete finalApprovals[userId]が実行されると、文字列キー'222'も削除される可能性がある
     if (finalApprovals[userId] && userId !== userIdKey) {
-      delete finalApprovals[userId];
+      console.log('[Reviewer Approve] Before deleting numeric key:', {
+        userId,
+        userIdKey,
+        hasNumericKey: userId in finalApprovals,
+        hasStringKey: userIdKey in finalApprovals,
+        numericKeyValue: finalApprovals[userId],
+        stringKeyValue: finalApprovals[userIdKey],
+        allKeys: Object.keys(finalApprovals),
+        finalApprovals: JSON.parse(JSON.stringify(finalApprovals))
+      });
+      
+      // 数値キーを削除する前に、文字列キーが存在することを確認
+      if (finalApprovals[userIdKey]) {
+        console.log('[Reviewer Approve] String key exists, preserving it before deleting numeric key');
+        // 文字列キーの値を保存
+        const stringKeyValue = finalApprovals[userIdKey];
+        delete finalApprovals[userId];
+        // 文字列キーが削除された場合は、再度設定
+        if (!finalApprovals[userIdKey]) {
+          console.log('[Reviewer Approve] String key was deleted, restoring it');
+          finalApprovals[userIdKey] = stringKeyValue;
+        }
+      } else {
+        delete finalApprovals[userId];
+      }
+      
+      console.log('[Reviewer Approve] After deleting numeric key:', {
+        userId,
+        userIdKey,
+        hasNumericKey: userId in finalApprovals,
+        hasStringKey: userIdKey in finalApprovals,
+        numericKeyValue: finalApprovals[userId],
+        stringKeyValue: finalApprovals[userIdKey],
+        allKeys: Object.keys(finalApprovals),
+        finalApprovals: JSON.parse(JSON.stringify(finalApprovals))
+      });
     }
     
     // デバッグログ：finalApprovalsの内容を確認
+    // 重要：JSON.parse(JSON.stringify())で深いコピーを作成してからログ出力
+    // これにより、console.logのシリアライズによる影響を回避
+    const finalApprovalsCopy = JSON.parse(JSON.stringify(finalApprovals));
     console.log('[Reviewer Approve] After setting userIdKey in finalApprovals:', {
       userId,
       userIdKey,
       finalApprovalsKeys: Object.keys(finalApprovals),
+      finalApprovalsKeysFromCopy: Object.keys(finalApprovalsCopy),
       finalApprovalsUserIdKey: finalApprovals[userIdKey],
+      finalApprovalsUserIdKeyFromCopy: finalApprovalsCopy[userIdKey],
       updatedApprovalsUserIdKey: updatedApprovals[userIdKey],
       hasUserIdKey: !!finalApprovals[userIdKey],
-      finalApprovals: JSON.parse(JSON.stringify(finalApprovals)) // 深いコピーを作成してログ出力
+      hasUserIdKeyFromCopy: !!finalApprovalsCopy[userIdKey],
+      finalApprovals: finalApprovalsCopy
     });
+    
+    // 最終確認：finalApprovalsに'222'が含まれているか確認
+    if (!finalApprovals[userIdKey]) {
+      console.error('[Reviewer Approve] CRITICAL ERROR: finalApprovals[userIdKey] is missing after all operations!', {
+        userIdKey,
+        finalApprovalsKeys: Object.keys(finalApprovals),
+        finalApprovals: finalApprovals,
+        updatedApprovalsUserIdKey: updatedApprovals[userIdKey]
+      });
+      // 強制的に設定
+      finalApprovals[userIdKey] = { ...updatedApprovals[userIdKey] };
+      console.log('[Reviewer Approve] Force setting finalApprovals[userIdKey] after error detection:', {
+        userIdKey,
+        value: finalApprovals[userIdKey],
+        finalApprovalsKeys: Object.keys(finalApprovals)
+      });
+    }
     
     console.log('[Reviewer Approve] Final approvals to save:', {
       userId,
