@@ -1087,6 +1087,13 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     // ただし、既存の承認情報がある場合は、ensureProjectRouteが上書きしないようにする
     const project = await ensureProjectRoute(projectWithLatestApprovals);
     
+    // まず、最終決裁者でないことを確認（最終決裁者はreviewer-approveエンドポイントを使用できない）
+    if (project.final_approver_user_id === userId) {
+      return res.status(403).json({ 
+        error: 'Final approvers cannot use the reviewer-approve endpoint. Please use the final-approve endpoint instead.' 
+      });
+    }
+    
     // ensureProjectRouteの後に、データベースから最新のreviewer_approvalsを再取得
     const latestProjectResult = await db.query(
       'SELECT reviewer_approvals FROM projects WHERE id = $1',
@@ -1131,6 +1138,8 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
       }
     }
 
+    
+    // 審査者として割り当てられていることを確認
     const assignedReviewers = await db.query(
       'SELECT reviewer_id FROM project_reviewers WHERE project_id = $1 AND reviewer_id = $2',
       [id, userId]
@@ -1400,28 +1409,61 @@ app.post('/api/projects/:id/final-approve', authenticateToken, requireApproved, 
       const reviewerIds = assignedReviewers.rows.map(r => r.reviewer_id);
       const approvals = project.reviewer_approvals || {};
       
-      // すべての審査者が承認しているか確認
+      // すべての審査者が承認しているか確認（文字列キーと数値キーの両方をチェック）
       const allReviewersApproved = reviewerIds.every((reviewerId) => {
-        const approval = approvals[reviewerId];
+        const stringKey = String(reviewerId);
+        const numericKey = reviewerId;
+        // 文字列キーと数値キーの両方をチェック
+        const approval = approvals[stringKey] || approvals[numericKey] || 
+                        (Object.keys(approvals).find(key => Number(key) === reviewerId) ? 
+                         approvals[Object.keys(approvals).find(key => Number(key) === reviewerId)] : null);
         return approval && approval.status === 'approved';
       });
       
       if (!allReviewersApproved) {
         const approvedCount = reviewerIds.filter((reviewerId) => {
-          const approval = approvals[reviewerId];
+          const stringKey = String(reviewerId);
+          const numericKey = reviewerId;
+          const approval = approvals[stringKey] || approvals[numericKey] || 
+                          (Object.keys(approvals).find(key => Number(key) === reviewerId) ? 
+                           approvals[Object.keys(approvals).find(key => Number(key) === reviewerId)] : null);
           return approval && approval.status === 'approved';
         }).length;
+        
+        const pendingCount = reviewerIds.length - approvedCount;
+        const rejectedCount = reviewerIds.filter((reviewerId) => {
+          const stringKey = String(reviewerId);
+          const numericKey = reviewerId;
+          const approval = approvals[stringKey] || approvals[numericKey] || 
+                          (Object.keys(approvals).find(key => Number(key) === reviewerId) ? 
+                           approvals[Object.keys(approvals).find(key => Number(key) === reviewerId)] : null);
+          return approval && approval.status === 'rejected';
+        }).length;
+        
+        console.log('[Final Approve] Not all reviewers approved:', {
+          projectId: id,
+          totalReviewers: reviewerIds.length,
+          approvedCount,
+          pendingCount,
+          rejectedCount,
+          reviewerIds,
+          approvals
+        });
         
         return res.status(400).json({ 
           error: 'All reviewers must approve before final approval',
           details: {
             total_reviewers: reviewerIds.length,
             approved_count: approvedCount,
-            pending_count: reviewerIds.length - approvedCount
+            pending_count: pendingCount,
+            rejected_count: rejectedCount
           }
         });
       }
     }
+    
+    // 却下の場合、すべての審査者が承認している必要はない（最終決裁者はいつでも却下できる）
+    // ただし、コメントは必須（既にチェック済み）
 
     // ステータスを更新
     await db.query(
