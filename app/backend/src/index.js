@@ -1219,13 +1219,22 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     );
     const dbApprovalsBeforeUpdate = beforeUpdateResult.rows[0]?.reviewer_approvals || {};
     
+    console.log('[Reviewer Approve] Before creating finalApprovals:', {
+      userId,
+      userIdKey,
+      dbApprovalsBeforeUpdateKeys: Object.keys(dbApprovalsBeforeUpdate),
+      latestReviewerApprovalsKeys: Object.keys(latestReviewerApprovals),
+      updatedApprovalsKeys: Object.keys(updatedApprovals),
+      updatedApprovalsUserIdKey: updatedApprovals[userIdKey]
+    });
+    
     // 既存の承認情報をマージ（updatedApprovalsを優先、既存の他の審査者の情報は保持）
-    // 1. まず、dbApprovalsBeforeUpdate（データベースの現在の状態）をベースにする
-    // 2. 次に、latestReviewerApprovals（ensureProjectRouteの後に取得した最新の承認情報）をマージ
+    // 1. まず、latestReviewerApprovals（ensureProjectRouteの後に取得した最新の承認情報）をベースにする
+    // 2. 次に、dbApprovalsBeforeUpdate（データベースの現在の状態）をマージ（最新の情報を優先）
     // 3. 最後に、updatedApprovals（現在のユーザーの承認情報）を確実に追加
     const finalApprovals = { 
-      ...dbApprovalsBeforeUpdate,  // データベースの現在の状態をベース
-      ...latestReviewerApprovals,  // ensureProjectRouteの後に取得した最新の承認情報をマージ
+      ...latestReviewerApprovals,  // ensureProjectRouteの後に取得した最新の承認情報をベース
+      ...dbApprovalsBeforeUpdate,  // データベースの現在の状態をマージ（最新の情報を優先）
       [userIdKey]: updatedApprovals[userIdKey]  // 現在のユーザーの承認情報を確実に追加
     };
     // 数値キーが存在する場合は削除
