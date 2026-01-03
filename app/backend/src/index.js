@@ -1243,11 +1243,19 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     // 既存の承認情報をマージ（updatedApprovalsを優先、既存の他の審査者の情報は保持）
     // 1. まず、dbApprovalsBeforeUpdate（データベースの現在の状態）をベースにする（すべての審査者の情報を含む）
     // 2. 次に、latestReviewerApprovals（ensureProjectRouteの後に取得した最新の承認情報）をマージ（最新の情報を優先）
+    // ただし、現在のユーザーの承認情報は除外（updatedApprovalsで上書きするため）
     // 3. 最後に、updatedApprovals（現在のユーザーの承認情報）を確実に追加（承認または却下の情報を確実に保存）
-    // 重要：updatedApprovals[userIdKey]を確実に含めるため、最後にマージし、その後で明示的に設定する
+    // 重要：updatedApprovals[userIdKey]を確実に含めるため、latestReviewerApprovalsから現在のユーザーの情報を除外してからマージする
+    
+    // latestReviewerApprovalsから現在のユーザーの情報を除外（updatedApprovalsで上書きするため）
+    const latestReviewerApprovalsWithoutCurrentUser = { ...latestReviewerApprovals };
+    delete latestReviewerApprovalsWithoutCurrentUser[userIdKey];
+    delete latestReviewerApprovalsWithoutCurrentUser[userId];
+    delete latestReviewerApprovalsWithoutCurrentUser[String(userId)];
+    
     const finalApprovals = { 
       ...dbApprovalsBeforeUpdate,  // データベースの現在の状態をベース（すべての審査者の情報を含む）
-      ...latestReviewerApprovals,  // ensureProjectRouteの後に取得した最新の承認情報をマージ（最新の情報を優先）
+      ...latestReviewerApprovalsWithoutCurrentUser,  // 現在のユーザーを除外した最新の承認情報をマージ
       ...updatedApprovals  // updatedApprovals全体をマージ（現在のユーザーの承認情報を確実に追加）
     };
     
