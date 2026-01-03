@@ -133,6 +133,7 @@ export const translations = {
     'projectApplication.errorFetchingReviewers': 'Failed to fetch reviewers. Please try again.',
     'projectApplication.error.save': 'Failed to save project application',
     'projectApplication.migrationRequired': 'Database migration is required. Please contact an administrator.',
+    'projectApplication.reviewerAutoAssigned': 'Reviewers will be automatically assigned based on the requested amount and approval routes configured by administrators.',
     
     // Review
     'review.title': 'Review Dashboard',
@@ -573,6 +574,7 @@ export const translations = {
     'projectApplication.errorFetchingReviewers': '審査者の取得に失敗しました。再度お試しください。',
     'projectApplication.error.save': 'プロジェクト申請の保存に失敗しました',
     'projectApplication.migrationRequired': 'データベースマイグレーションが必要です。管理者に連絡してください。',
+    'projectApplication.reviewerAutoAssigned': '審査者は申請金額と管理者が設定した承認ルートに基づいて自動的に割り当てられます。',
     
     // Review
     'review.title': '審査ダッシュボード',
