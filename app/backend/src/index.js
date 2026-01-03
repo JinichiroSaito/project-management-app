@@ -1212,6 +1212,7 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
 
     // 楽観的ロック：reviewer_approvalsが変更されていないことを確認してから更新
     // ただし、既存の承認情報を保持するため、現在のデータベースの状態を再取得
+    // ensureProjectRouteの後に取得することで、最新の承認情報を取得できる
     const beforeUpdateResult = await db.query(
       'SELECT reviewer_approvals FROM projects WHERE id = $1',
       [id]
@@ -1219,7 +1220,8 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     const dbApprovalsBeforeUpdate = beforeUpdateResult.rows[0]?.reviewer_approvals || {};
     
     // 既存の承認情報をマージ（updatedApprovalsを優先、既存の他の審査者の情報は保持）
-    const finalApprovals = { ...dbApprovalsBeforeUpdate };
+    // latestReviewerApprovals（ensureProjectRouteの後に取得した最新の承認情報）を優先して使用
+    const finalApprovals = { ...latestReviewerApprovals, ...dbApprovalsBeforeUpdate };
     
     // 現在のユーザーの承認情報を確実に更新（文字列キーで統一）
     finalApprovals[userIdKey] = updatedApprovals[userIdKey];
