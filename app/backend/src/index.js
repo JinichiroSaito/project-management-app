@@ -1220,11 +1220,14 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     const dbApprovalsBeforeUpdate = beforeUpdateResult.rows[0]?.reviewer_approvals || {};
     
     // 既存の承認情報をマージ（updatedApprovalsを優先、既存の他の審査者の情報は保持）
-    // latestReviewerApprovals（ensureProjectRouteの後に取得した最新の承認情報）を優先して使用
-    const finalApprovals = { ...latestReviewerApprovals, ...dbApprovalsBeforeUpdate };
-    
-    // 現在のユーザーの承認情報を確実に更新（文字列キーで統一）
-    finalApprovals[userIdKey] = updatedApprovals[userIdKey];
+    // 1. まず、dbApprovalsBeforeUpdate（データベースの現在の状態）をベースにする
+    // 2. 次に、latestReviewerApprovals（ensureProjectRouteの後に取得した最新の承認情報）をマージ
+    // 3. 最後に、updatedApprovals（現在のユーザーの承認情報）を確実に追加
+    const finalApprovals = { 
+      ...dbApprovalsBeforeUpdate,  // データベースの現在の状態をベース
+      ...latestReviewerApprovals,  // ensureProjectRouteの後に取得した最新の承認情報をマージ
+      [userIdKey]: updatedApprovals[userIdKey]  // 現在のユーザーの承認情報を確実に追加
+    };
     // 数値キーが存在する場合は削除
     if (finalApprovals[userId] && userId !== userIdKey) {
       delete finalApprovals[userId];
