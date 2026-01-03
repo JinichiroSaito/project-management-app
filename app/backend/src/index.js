@@ -1241,29 +1241,37 @@ app.post('/api/projects/:id/reviewer-approve', authenticateToken, requireApprove
     });
     
     // 既存の承認情報をマージ（updatedApprovalsを優先、既存の他の審査者の情報は保持）
-    // 1. まず、dbApprovalsBeforeUpdate（データベースの現在の状態）をベースにする（すべての審査者の情報を含む）
-    // 2. 次に、latestReviewerApprovals（ensureProjectRouteの後に取得した最新の承認情報）をマージ（最新の情報を優先）
-    // ただし、現在のユーザーの承認情報は除外（updatedApprovalsで上書きするため）
-    // 3. 最後に、updatedApprovals（現在のユーザーの承認情報）を確実に追加（承認または却下の情報を確実に保存）
-    // 重要：updatedApprovals[userIdKey]を確実に含めるため、latestReviewerApprovalsから現在のユーザーの情報を除外してからマージする
+    // 重要：updatedApprovalsには現在のユーザーの承認情報が含まれているため、これをベースにする
+    // 1. updatedApprovalsをベースにする（現在のユーザーの承認情報を含む）
+    // 2. 他の審査者の承認情報をdbApprovalsBeforeUpdateから取得してマージ（現在のユーザーを除外）
+    // 3. 現在のユーザーの承認情報を確実に設定（文字列キーで統一）
     
-    // latestReviewerApprovalsから現在のユーザーの情報を除外（updatedApprovalsで上書きするため）
-    const latestReviewerApprovalsWithoutCurrentUser = { ...latestReviewerApprovals };
-    delete latestReviewerApprovalsWithoutCurrentUser[userIdKey];
-    delete latestReviewerApprovalsWithoutCurrentUser[userId];
-    delete latestReviewerApprovalsWithoutCurrentUser[String(userId)];
+    // 他の審査者の承認情報を取得（現在のユーザーを除外）
+    const otherReviewersApprovals = { ...dbApprovalsBeforeUpdate };
+    delete otherReviewersApprovals[userIdKey];
+    delete otherReviewersApprovals[userId];
+    delete otherReviewersApprovals[String(userId)];
     
+    // finalApprovalsを作成：updatedApprovalsをベースにして、他の審査者の情報をマージ
     const finalApprovals = { 
-      ...dbApprovalsBeforeUpdate,  // データベースの現在の状態をベース（すべての審査者の情報を含む）
-      ...latestReviewerApprovalsWithoutCurrentUser,  // 現在のユーザーを除外した最新の承認情報をマージ
-      ...updatedApprovals  // updatedApprovals全体をマージ（現在のユーザーの承認情報を確実に追加）
+      ...otherReviewersApprovals,  // 他の審査者の承認情報（現在のユーザーを除外）
+      ...updatedApprovals  // updatedApprovals全体をマージ（現在のユーザーの承認情報を含む）
     };
     
     // 現在のユーザーの承認情報を確実に設定（文字列キーで統一）
     // これは必須：updatedApprovals[userIdKey]が確実に含まれるようにする
-    // マージの順序に関係なく、確実に現在のユーザーの承認情報を設定する
     if (updatedApprovals && updatedApprovals[userIdKey]) {
       finalApprovals[userIdKey] = { ...updatedApprovals[userIdKey] };
+      console.log('[Reviewer Approve] Setting userIdKey in finalApprovals:', {
+        userIdKey,
+        value: finalApprovals[userIdKey]
+      });
+    } else {
+      console.error('[Reviewer Approve] ERROR: updatedApprovals[userIdKey] is missing!', {
+        userIdKey,
+        updatedApprovals,
+        updatedApprovalsKeys: Object.keys(updatedApprovals || {})
+      });
     }
     
     // 数値キーが存在する場合は削除（文字列キーで統一するため）
